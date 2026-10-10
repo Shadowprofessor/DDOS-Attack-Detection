@@ -7,7 +7,9 @@ __pycache__/
 # Model checkpoints / heavy weights in models/
 models/*.joblib
 models/*.pkl
+models/*.pt
 *.pkl
+*.pt
 
 # Datasets and raw captures
 data/
