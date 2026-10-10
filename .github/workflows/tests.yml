@@ -1,0 +1,39 @@
+name: Test Suite & Mitigation Security Gate
+
+on:
+  push:
+    branches:
+      - main
+      - 'prompt-*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Pytest & Security Audits
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest scikit-learn xgboost pandas numpy scapy fastapi httpx pyyaml requests
+
+      - name: Security Check: Mitigation Approval Gate & Bypass Audit
+        id: mitigation-safety-gate
+        run: |
+          python -m pytest tests/test_mitigation_bypass.py tests/test_mitigation_approval_gate.py -v
+
+      - name: Full Test Suite
+        run: |
+          python -m pytest tests/ -v

@@ -1,0 +1,41 @@
+# Python / Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Model checkpoints / heavy weights in models/
+models/*.joblib
+models/*.pkl
+*.pkl
+
+# Datasets and raw captures
+data/
+Codes/ml/datasets/
+*.csv
+!FlowStatsfile.csv
+!PredictFlowStatsfile.csv
+
+# Evaluation JSON dumps
+docs/eval/*.json
+
+# Forensics Logs
+Codes/attack_logs/*.json
+Codes/security/attack_logs/*.json
+attack_logs/*.json
+
+# Secrets / Environment variables
+.env
+.env.*
+
+# Scratch / Temporary files
+scratch/
+
+# IDE / OS / Temp files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+~$*
+*.tmp
+
