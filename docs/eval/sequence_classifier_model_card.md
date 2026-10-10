@@ -9,7 +9,9 @@
   - Dropout: 0.3
   - Window Size ($W$): 10 timesteps (configurable)
   - Input Features: 77 features per timestep (`CICFLOWMETER_FEATURE_NAMES`)
-  - Classification Head: `LayerNorm(77) -> BiLSTM(128, 2, dropout=0.3) -> Concat(fwd, bwd) -> FC(256 -> 128) -> ReLU -> Dropout(0.3) -> FC(128 -> 14)`
+  - Classification Head: `LayerNorm(77) -> BiLSTM(128, 2, dropout=0.3) -> Concat(fwd, bwd) -> FC(256 -> 128) -> ReLU -> Dropout(0.3) -> FC(128 -> 13)`
+  - Taxonomy (13 Classes, identical to production RF/XGBoost bundles):
+    `['Benign', 'DNS', 'LDAP', 'MSSQL', 'NTP', 'NetBIOS', 'Portmap', 'SNMP', 'Syn', 'TFTP', 'UDP', 'UDP-Lag', 'WebDDoS']`
 
 ---
 
@@ -24,13 +26,27 @@ The original raw `.pcap` files for CICDDoS2019 are external multi-hundred gigaby
 ---
 
 ## Slowloris Proxy Heuristic Audit & Findings
-Before applying oversampling for low-and-slow attacks, a quantitative audit was conducted across the training data:
-- **Heuristic Exploration:** Evaluating a naive `(Flow Duration > 1s) & (Flow Packets/s < 10)` rule revealed that **18,950 Benign flows** and **97,840 TFTP flows** matched. Inspection of sampled Benign rows confirmed that normal long-lived connections (keep-alive, streaming, idle telemetry) exhibit long duration and low packet rate, but with balanced forward/backward packets (mean 20–80 packets) and large server payload responses.
-- **Ground Truth Slow Attacks:** In CICDDoS2019 (`UDPLag-testing.parquet`), exactly **51 flows** carry the `WebDDoS` label. Of these, 17 flows are high-duration (>1s up to 31.5s, rate 0.24–5.0 pkt/s, with small forward payloads or 0-byte header stalls), representing genuine Slowloris/GoldenEye attacks.
-- **Tightened Heuristic:** The heuristic was tightened to strictly target:
-  1. `Label == 'WebDDoS'`, and
-  2. Attack-only flows (`is_attack` is True) with `Flow Duration > 1e6 us`, `Flow Packets/s < 10`, `Total Fwd Packets <= 20`, and `Fwd Packets Length Total < 3000`.
-  Benign traffic is explicitly protected from ever being classified or oversampled as a slow-attack proxy.
+A quantitative audit across the full training dataset (17 parquet partitions, 419k flows) evaluated slow-proxy conditions:
+- **Condition Audit:**
+  - Naive condition (`Duration > 1s` & `Rate < 10 pkt/s`): Matched 18,950 Benign flows and 97,840 TFTP flows.
+  - Tightened condition (`is_attack` & `Duration > 1s` & `Rate < 10` & `Fwd Pkts <= 20` & `Fwd Bytes < 3000`):
+    - **TFTP:** 74,318 flows (75.13% of TFTP) matched due to single-packet probe timeouts.
+    - **Syn:** 40,519 flows (82.07% of Syn) matched due to unreplied SYN probe timeouts.
+    - **UDP-Lag:** 5,765 flows (64.58%) matched.
+    - **WebDDoS:** 51 flows (100.0%) matched.
+- **Strict Label-Level Allowlist Resolution:**
+  To prevent massive flood classes (TFTP and Syn) from hijacking the proxy oversampling path, `is_slowloris_proxy` enforces `SLOWLORIS_PROXY_ALLOWLIST = {"WebDDoS", "slowloris", "goldeneye", "ddos-http_flood"}`.
+  Under this allowlist:
+  - **WebDDoS:** 51 flows (100%)
+  - **TFTP:** 0 flows (0%)
+  - **Syn:** 0 flows (0%)
+  - **All other attacks & Benign:** 0 flows (0%)
+
+---
+
+## Taxonomy Harmonization (Prompt 4b Resolution)
+- **13 Classes Standardized:** Production Random Forest and XGBoost bundles in `models/` contain 13 classes sorted alphabetically. The 14th class (`Other_DDoS`) observed during Phase 1 multi-dataset training originated from InSDN generic DoS/DDoS labels. Because multi-dataset models failed the performance gate (0.983 vs 0.998 baseline), production models were preserved at 13 classes.
+- **Harmonization Choice:** `SequenceClassifier` standardizes strictly on the 13 canonical classes in identical alphabetical order (`['Benign', 'DNS', ..., 'WebDDoS']`). Any `Other_DDoS` integration is deferred to Prompt 5 ensemble harmonization to prevent dimensional mismatch during voting and probability averaging.
 
 ---
 

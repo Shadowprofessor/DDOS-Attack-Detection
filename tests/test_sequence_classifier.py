@@ -44,21 +44,21 @@ def test_bilstm_forward_shape():
     """Verify BiLSTM model output shape is (batch, num_classes) for (batch, W, 77)."""
     batch_size = 4
     window_size = 10
-    model = BiLSTMSequenceModel(num_features=77, num_classes=14, hidden_size=128, num_layers=2)
+    model = BiLSTMSequenceModel(num_features=77, num_classes=13, hidden_size=128, num_layers=2)
     x = torch.randn(batch_size, window_size, 77)
     logits = model(x)
-    assert logits.shape == (batch_size, 14)
+    assert logits.shape == (batch_size, 13)
 
 
 def test_variable_window_sizes():
     """Verify model can process variable sequence lengths (1, 5, 10, 20)."""
-    model = BiLSTMSequenceModel(num_features=77, num_classes=14)
+    model = BiLSTMSequenceModel(num_features=77, num_classes=13)
     model.eval()
     for seq_len in [1, 5, 10, 20]:
         x = torch.randn(2, seq_len, 77)
         with torch.no_grad():
             out = model(x)
-        assert out.shape == (2, 14)
+        assert out.shape == (2, 13)
 
 
 def test_short_window_padding(sequence_clf):
@@ -180,8 +180,19 @@ def test_save_load_roundtrip(sequence_clf, dummy_features):
 
 
 def test_classes_match_taxonomy(sequence_clf):
-    """Verify model classes match the canonical CICDDoS2019 class list."""
+    """Verify model classes match the 13 canonical CICDDoS2019 classes in exact order."""
+    assert len(sequence_clf.classes) == 13
     assert sequence_clf.classes == list(CICDDOS2019_CLASSES)
+
+    # Verify exact taxonomy and index order match with production RF & XGBoost models
+    import joblib
+
+    for mpath in ["models/cicddos2019_xgboost.pkl", "models/cicddos2019_rf.pkl"]:
+        if os.path.exists(mpath):
+            bundle = joblib.load(mpath)
+            prod_classes = list(bundle["classes"])
+            assert sequence_clf.classes == prod_classes
+            assert len(prod_classes) == 13
 
 
 def test_pseudo_temporal_caveat_preserved(sequence_clf):
@@ -203,10 +214,14 @@ def test_pseudo_temporal_caveat_preserved(sequence_clf):
 
 
 def test_tightened_slowloris_heuristic():
-    """Verify tightened Slowloris proxy heuristic accepts slow attack and rejects benign."""
+    """Verify tightened Slowloris proxy heuristic with strict allowlist.
+    
+    Ensures WebDDoS matches, while TFTP, Syn, and Benign are strictly excluded
+    even when they have high duration and low rate.
+    """
     import pandas as pd
 
-    # Benign long-lived keepalive connection (should be rejected by heuristic)
+    # Benign long-lived keepalive connection (rejected)
     benign_flow = pd.Series({
         "Label": "Benign",
         "Normalized_Label": "Benign",
@@ -217,7 +232,29 @@ def test_tightened_slowloris_heuristic():
     })
     assert not is_slowloris_proxy(benign_flow)
 
-    # WebDDoS labeled attack flow (accepted)
+    # TFTP orphaned/timeout flow with low rate + high duration (REJECTED by allowlist)
+    tftp_flow = pd.Series({
+        "Label": "TFTP",
+        "Normalized_Label": "TFTP",
+        "Flow Duration": 60_000_000.0,
+        "Flow Packets/s": 0.03,
+        "Total Fwd Packets": 2.0,
+        "Fwd Packets Length Total": 120.0,
+    })
+    assert not is_slowloris_proxy(tftp_flow)
+
+    # Syn orphaned/timeout flow with low rate + high duration (REJECTED by allowlist)
+    syn_flow = pd.Series({
+        "Label": "Syn",
+        "Normalized_Label": "Syn",
+        "Flow Duration": 45_000_000.0,
+        "Flow Packets/s": 0.04,
+        "Total Fwd Packets": 2.0,
+        "Fwd Packets Length Total": 120.0,
+    })
+    assert not is_slowloris_proxy(syn_flow)
+
+    # WebDDoS labeled attack flow (ACCEPTED by allowlist)
     webddos_flow = pd.Series({
         "Label": "WebDDoS",
         "Normalized_Label": "WebDDoS",
@@ -226,18 +263,15 @@ def test_tightened_slowloris_heuristic():
     })
     assert is_slowloris_proxy(webddos_flow)
 
-    # Unlabeled attack flow with low-and-slow signature (accepted)
-    slow_attack_flow = pd.Series({
-        "Label": "DoS",
-        "Normalized_Label": "Other_DDoS",
-        "Flow Duration": 12_000_000.0,
-        "Flow Packets/s": 1.2,
-        "Total Fwd Packets": 8.0,
-        "Fwd Packets Length Total": 800.0,
+    # WebDDoS with slow traffic signature check
+    slow_webddos = pd.Series({
+        "Label": "WebDDoS",
+        "Normalized_Label": "WebDDoS",
+        "Flow Duration": 7_500_000.0,
+        "Flow Packets/s": 2.5,
     })
-    assert is_slowloris_proxy(slow_attack_flow)
-
-    # High-rate attack flow (rejected as not low-and-slow)
+    assert is_slowloris_proxy(slow_webddos, require_slow_signature=True)
+    assert not is_slowloris_proxy(webddos_flow, require_slow_signature=True)
     flood_flow = pd.Series({
         "Label": "Syn",
         "Normalized_Label": "Syn",

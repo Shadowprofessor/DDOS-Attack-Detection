@@ -21,20 +21,20 @@ from typing import Dict, List, Optional, Tuple, Union
 from src.features.flow_extractor import CICFLOWMETER_FEATURE_NAMES, NUM_FEATURES
 
 
-# Canonical 13-class taxonomy
+# Canonical 13-class taxonomy (alphabetical, exactly matching production bundles)
 CICDDOS2019_CLASSES = [
     "Benign",
-    "NTP",
-    "TFTP",
-    "Syn",
-    "UDP",
-    "MSSQL",
-    "UDP-Lag",
     "DNS",
     "LDAP",
-    "SNMP",
+    "MSSQL",
+    "NTP",
     "NetBIOS",
     "Portmap",
+    "SNMP",
+    "Syn",
+    "TFTP",
+    "UDP",
+    "UDP-Lag",
     "WebDDoS",
 ]
 

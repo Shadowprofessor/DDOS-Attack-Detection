@@ -69,31 +69,41 @@ class WindowDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 
-def is_slowloris_proxy(row: pd.Series) -> bool:
-    """Tightened heuristic to detect slow-attack proxy flows without capturing benign sessions.
+# Strict allowlist of attack labels permitted for slowloris proxy oversampling.
+# High-volume flood classes (TFTP, Syn, UDP, NTP, etc.) and Benign traffic are strictly excluded.
+SLOWLORIS_PROXY_ALLOWLIST: Tuple[str, ...] = (
+    "webddos",
+    "slowloris",
+    "goldeneye",
+    "ddos-http_flood",
+)
 
-    Condition:
-      1. Explicitly labeled 'WebDDoS', OR
-      2. Attack traffic (not Benign) with:
-         - Flow Duration > 1,000,000 us (1 second)
-         - Flow Packets/s < 10
-         - Total Fwd Packets <= 20
-         - Fwd Packets Length Total < 3000
+
+def is_slowloris_proxy(
+    row: pd.Series,
+    allowlist: Optional[Tuple[str, ...]] = None,
+    require_slow_signature: bool = False,
+) -> bool:
+    """Tightened heuristic to detect slow-attack proxy flows with strict Label-level allowlist.
+
+    Requires:
+      1. Flow label MUST be in allowlist (defaults to WebDDoS / Slowloris / GoldenEye).
+         High-volume flood traffic (e.g. TFTP, Syn, UDP, NTP) and Benign flows are strictly excluded.
+      2. If require_slow_signature is True, additionally requires:
+         Flow Duration > 1,000,000 us (1 second) and Flow Packets/s < 10.
     """
-    lbl = str(row.get("Normalized_Label", row.get("Label", ""))).strip()
-    if lbl.lower() in ("webddos", "slowloris", "goldeneye"):
-        return True
+    target_allowlist = allowlist if allowlist is not None else SLOWLORIS_PROXY_ALLOWLIST
+    lbl = str(row.get("Normalized_Label", row.get("Label", ""))).strip().lower()
 
-    # Benign flows must NEVER match the slow-attack proxy
-    if lbl.lower() in ("benign", "normal"):
+    if lbl not in target_allowlist:
         return False
 
-    duration = float(row.get("Flow Duration", 0.0))
-    rate = float(row.get("Flow Packets/s", 0.0))
-    fwd_pkts = float(row.get("Total Fwd Packets", 0.0))
-    fwd_bytes = float(row.get("Fwd Packets Length Total", 0.0))
+    if require_slow_signature:
+        duration = float(row.get("Flow Duration", 0.0))
+        rate = float(row.get("Flow Packets/s", 0.0))
+        return (duration > 1e6) and (rate < 10.0)
 
-    return (duration > 1e6) and (rate < 10.0) and (fwd_pkts <= 20) and (fwd_bytes < 3000)
+    return True
 
 
 def build_synthetic_windows(
