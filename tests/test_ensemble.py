@@ -206,7 +206,7 @@ def test_api_score_flow_with_model_param(client):
     """Verify /score/flow endpoint with model query parameters."""
     dummy_payload = {"features": {" Destination Port": 80, " Flow Duration": 1000}}
 
-    # 1. Default (ensemble)
+    # 1. Default (automated real-time path: xgb_only)
     res = client.post(
         "/score/flow",
         json=dummy_payload,
@@ -216,9 +216,19 @@ def test_api_score_flow_with_model_param(client):
     data = res.json()
     assert "result" in data
     assert "per_model_breakdown" in data["result"]
-    assert "weights" in data["result"]["per_model_breakdown"]
+    assert data["result"]["per_model_breakdown"]["mode"] == "xgb_only"
 
-    # 2. RF only query param
+    # 2. Explicit ensemble query param
+    res_ens = client.post(
+        "/score/flow?model=ensemble",
+        json=dummy_payload,
+        headers={"X-API-Key": TEST_API_KEY},
+    )
+    assert res_ens.status_code == 200
+    assert "weights" in res_ens.json()["result"]["per_model_breakdown"]
+    assert res_ens.json()["result"]["per_model_breakdown"]["mode"] in ("ensemble_tabular", "rf_xgb")
+
+    # 3. RF only query param
     res_rf = client.post(
         "/score/flow?model=rf_only",
         json=dummy_payload,

@@ -366,7 +366,10 @@ async def model_info():
 @app.post("/score/flow", response_model=FlowResponse)
 async def score_flow(
     body: FlowFeatures,
-    model: str = Query("ensemble", description="Scoring mode: 'ensemble' (default), 'rf_only', 'xgb_only', 'rf_xgb'"),
+    model: str = Query(
+        "xgb_only",
+        description="Scoring mode for real-time automated scoring: 'xgb_only' (default, <1ms latency), 'ensemble' (calibrated stacking), 'rf_xgb' (tabular blend), or 'rf_only'",
+    ),
     key: str = Depends(check_rate_limit),
 ):
     """Score a single network flow through the calibrated ensemble or fallback mode."""
@@ -381,11 +384,15 @@ async def score_flow(
         if hw_rows:
             hw_matrix = np.array(hw_rows, dtype=np.float32)
 
+    effective_mode = model
+    if body.history_window is not None and model == "xgb_only":
+        effective_mode = "ensemble"
+
     ensemble = get_default_ensemble()
     label, confidence, breakdown = ensemble.score_flow(
         features=body.features,
         history_window=hw_matrix,
-        mode=model,
+        mode=effective_mode,
     )
 
     is_attack = (label.lower() != "benign")
