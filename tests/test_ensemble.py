@@ -191,6 +191,9 @@ def test_fit_weights_on_synthetic_data(tmp_path):
     full_sum = sum(report["scalar_weights_full"].values())
     assert pytest.approx(full_sum, abs=1e-2) == 1.0
 
+    # SequenceClassifier contribution must never exceed 0.15 safety cap
+    assert report["scalar_weights_full"]["sequence_classifier"] <= 0.15
+
     assert os.path.isfile(save_path)
 
 

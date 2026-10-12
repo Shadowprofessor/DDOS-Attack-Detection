@@ -218,15 +218,22 @@ class EnsembleClassifier:
             "xgboost": round(best_w_tab[1], 3),
         }
 
-        # Grid search 3-way weights for full ensemble
+        # Grid search 3-way weights for full ensemble with explicit safety cap on SequenceClassifier:
+        # Until retrained on genuine packet sequences, SequenceClassifier contribution is capped
+        # at max_seq_weight (0.15) and cannot exceed RF or XGBoost individually.
         best_f1_full = -1.0
-        best_w_full = (0.45, 0.45, 0.10)
-        grid_steps = np.linspace(0.0, 1.0, 11)
+        best_w_full = (0.50, 0.40, 0.10)
+        grid_steps = np.linspace(0.0, 1.0, 41)
+        max_seq_weight = 0.15
         for w1 in grid_steps:
             for w2 in grid_steps:
                 if w1 + w2 > 1.0:
                     continue
-                w3 = 1.0 - (w1 + w2)
+                w3 = round(1.0 - (w1 + w2), 4)
+                if w3 > max_seq_weight or w3 < 0.0:
+                    continue
+                if w3 > w1 or w3 > w2:
+                    continue
                 P_blend = w1 * P_rf + w2 * P_xgb + w3 * P_seq
                 preds = np.argmax(P_blend, axis=1)
                 score = f1_score(y_indices, preds, average="macro", zero_division=0)
@@ -444,22 +451,16 @@ class EnsembleClassifier:
         p_xgb_vec = np.array([xgb_res["probabilities"].get(c, 0.0) for c in self.classes])
         p_seq_vec = np.array([seq_res["probabilities"].get(c, 0.0) for c in self.classes])
 
-        if self.meta_model_full is not None:
-            x_meta = np.hstack([p_rf_vec, p_xgb_vec, p_seq_vec]).reshape(1, -1)
-            meta_probs = self.meta_model_full.predict_proba(x_meta)[0]
-            pred_idx = int(np.argmax(meta_probs))
-            final_label = self.classes[pred_idx]
-            final_conf = float(meta_probs[pred_idx])
-            stacking_used = True
-        else:
-            w_rf = self.scalar_weights_full.get("random_forest", 0.45)
-            w_xgb = self.scalar_weights_full.get("xgboost", 0.45)
-            w_seq = self.scalar_weights_full.get("sequence_classifier", 0.10)
-            p_blend = w_rf * p_rf_vec + w_xgb * p_xgb_vec + w_seq * p_seq_vec
-            pred_idx = int(np.argmax(p_blend))
-            final_label = self.classes[pred_idx]
-            final_conf = float(p_blend[pred_idx])
-            stacking_used = False
+        # Enforce safety-capped convex combination: SequenceClassifier is strictly bounded
+        # (capped <= 15% and <= RF, XGB) so unverified synthetic sequences cannot dominate tabular models
+        w_rf = self.scalar_weights_full.get("random_forest", 0.325)
+        w_xgb = self.scalar_weights_full.get("xgboost", 0.525)
+        w_seq = self.scalar_weights_full.get("sequence_classifier", 0.150)
+        p_blend = w_rf * p_rf_vec + w_xgb * p_xgb_vec + w_seq * p_seq_vec
+        pred_idx = int(np.argmax(p_blend))
+        final_label = self.classes[pred_idx]
+        final_conf = float(p_blend[pred_idx])
+        stacking_used = False
 
         breakdown = {
             "random_forest": rf_res,
