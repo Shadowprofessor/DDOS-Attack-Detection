@@ -28,7 +28,12 @@ from src.models.ensemble import (
     score_flow,
     get_default_ensemble,
 )
-from src.api.scoring_service import app, _generated_dev_key
+from src.api.scoring_service import app, _generated_dev_key, API_KEYS
+import src.api.scoring_service as api_module
+
+
+def get_active_api_key():
+    return next(iter(api_module.API_KEYS)) if api_module.API_KEYS else (_generated_dev_key or "test-api-key")
 
 
 TEST_API_KEY = _generated_dev_key or "test-api-key"
@@ -208,12 +213,13 @@ def test_module_level_score_flow(dummy_features):
 def test_api_score_flow_with_model_param(client):
     """Verify /score/flow endpoint with model query parameters."""
     dummy_payload = {"features": {" Destination Port": 80, " Flow Duration": 1000}}
+    key = get_active_api_key()
 
     # 1. Default (automated real-time path: xgb_only)
     res = client.post(
         "/score/flow",
         json=dummy_payload,
-        headers={"X-API-Key": TEST_API_KEY},
+        headers={"X-API-Key": key},
     )
     assert res.status_code == 200
     data = res.json()
@@ -225,7 +231,7 @@ def test_api_score_flow_with_model_param(client):
     res_ens = client.post(
         "/score/flow?model=ensemble",
         json=dummy_payload,
-        headers={"X-API-Key": TEST_API_KEY},
+        headers={"X-API-Key": key},
     )
     assert res_ens.status_code == 200
     assert "weights" in res_ens.json()["result"]["per_model_breakdown"]
@@ -235,7 +241,7 @@ def test_api_score_flow_with_model_param(client):
     res_rf = client.post(
         "/score/flow?model=rf_only",
         json=dummy_payload,
-        headers={"X-API-Key": TEST_API_KEY},
+        headers={"X-API-Key": key},
     )
     assert res_rf.status_code == 200
     assert res_rf.json()["result"]["per_model_breakdown"]["mode"] == "rf_only"
@@ -244,7 +250,7 @@ def test_api_score_flow_with_model_param(client):
     res_xgb = client.post(
         "/score/flow?model=xgb_only",
         json=dummy_payload,
-        headers={"X-API-Key": TEST_API_KEY},
+        headers={"X-API-Key": key},
     )
     assert res_xgb.status_code == 200
     assert res_xgb.json()["result"]["per_model_breakdown"]["mode"] == "xgb_only"

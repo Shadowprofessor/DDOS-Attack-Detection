@@ -34,12 +34,18 @@ def clean_manager(tmp_path, monkeypatch):
     monkeypatch.setenv("DDOS_PENDING_ACTIONS_PATH", storage_file)
     monkeypatch.setenv("DDOS_API_KEYS", "scoring-key-test")
     monkeypatch.setenv("DDOS_ADMIN_KEYS", "admin-key-test")
-    api_module.API_KEYS = {"scoring-key-test"}
-    api_module.ADMIN_KEYS = {"admin-key-test"}
+    orig_api = set(api_module.API_KEYS)
+    orig_admin = set(api_module.ADMIN_KEYS)
+    api_module.API_KEYS.add("scoring-key-test")
+    api_module.ADMIN_KEYS.add("admin-key-test")
 
     mgr = PendingActionManager.get_instance(storage_file)
     mgr.clear()
-    return mgr
+    try:
+        yield mgr
+    finally:
+        api_module.API_KEYS = orig_api
+        api_module.ADMIN_KEYS = orig_admin
 
 
 class TestMitigationBypassChecks:
