@@ -20,11 +20,11 @@ import logging
 import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, Any, List, Dict
 
 import joblib
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
@@ -66,6 +66,7 @@ MAX_BATCH_SIZE = int(os.environ.get("DDOS_MAX_BATCH_SIZE", "1000"))
 # ---------------------------------------------------------------------------
 from src.features.flow_extractor import CICFLOWMETER_FEATURE_NAMES
 from src.mitigation.manager import get_manager
+from src.models.ensemble import get_default_ensemble
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -200,6 +201,10 @@ class FlowFeatures(BaseModel):
         ...,
         description="Mapping of feature name -> numeric value (77 CICFlowMeter features)."
     )
+    history_window: Optional[List[Dict[str, float]]] = Field(
+        default=None,
+        description="Optional list of feature snapshots for temporal sequence models."
+    )
 
 class BatchFlowRequest(BaseModel):
     """Batch of flow feature vectors."""
@@ -214,10 +219,11 @@ class ScoringResult(BaseModel):
     confidence: float
     attack_family: Optional[str] = None
     attack_family_confidence: Optional[float] = None
+    per_model_breakdown: Optional[Dict[str, Any]] = None
 
 class FlowResponse(BaseModel):
     result: ScoringResult
-    model_version: str = "hierarchical-xgb-6class-v1"
+    model_version: str = "ensemble-rf-xgb-bilstm-v1"
 
 class BatchResponse(BaseModel):
     results: list[ScoringResult]
@@ -358,15 +364,46 @@ async def model_info():
     }
 
 @app.post("/score/flow", response_model=FlowResponse)
-async def score_flow(body: FlowFeatures, key: str = Depends(check_rate_limit)):
-    """Score a single network flow through the hierarchical pipeline."""
-    X = _preprocess_features(body.features)
-    result = _score_single(X)
-    logger.info(
-        "key=%s score_flow attack=%s family=%s conf=%.3f",
-        key[:8], result.is_attack, result.attack_family, result.confidence,
+async def score_flow(
+    body: FlowFeatures,
+    model: str = Query("ensemble", description="Scoring mode: 'ensemble' (default), 'rf_only', 'xgb_only', 'rf_xgb'"),
+    key: str = Depends(check_rate_limit),
+):
+    """Score a single network flow through the calibrated ensemble or fallback mode."""
+    hw_matrix = None
+    if body.history_window is not None:
+        cols = registry.feature_cols
+        medians = registry.medians
+        hw_rows = []
+        for step in body.history_window:
+            row = [float(step.get(c, medians.get(c, 0.0))) for c in cols]
+            hw_rows.append(row)
+        if hw_rows:
+            hw_matrix = np.array(hw_rows, dtype=np.float32)
+
+    ensemble = get_default_ensemble()
+    label, confidence, breakdown = ensemble.score_flow(
+        features=body.features,
+        history_window=hw_matrix,
+        mode=model,
     )
-    return FlowResponse(result=result)
+
+    is_attack = (label.lower() != "benign")
+    attack_family = label if is_attack else None
+    attack_family_confidence = confidence if is_attack else None
+
+    result = ScoringResult(
+        is_attack=is_attack,
+        confidence=confidence,
+        attack_family=attack_family,
+        attack_family_confidence=attack_family_confidence,
+        per_model_breakdown=breakdown,
+    )
+    logger.info(
+        "key=%s score_flow mode=%s attack=%s family=%s conf=%.3f",
+        key[:8], model, result.is_attack, result.attack_family, result.confidence,
+    )
+    return FlowResponse(result=result, model_version="ensemble-rf-xgb-bilstm-v1")
 
 @app.post("/score/batch", response_model=BatchResponse)
 async def score_batch(body: BatchFlowRequest, key: str = Depends(check_rate_limit)):

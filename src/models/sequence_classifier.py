@@ -230,10 +230,10 @@ class SequenceClassifier:
         padded = self._pad_window(window)
         sanitized = self._sanitize_features(padded)
 
-        tensor_in = torch.tensor(sanitized, dtype=torch.float32, device=self.device).unsqueeze(0)
+        tensor_in = torch.as_tensor(sanitized, dtype=torch.float32, device=self.device).unsqueeze(0)
 
         self.model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             logits = self.model(tensor_in)
             probs = torch.softmax(logits, dim=-1).squeeze(0).cpu().numpy()
 
