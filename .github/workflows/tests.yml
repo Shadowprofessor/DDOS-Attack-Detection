@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest scikit-learn xgboost pandas numpy scapy fastapi httpx pyyaml requests torch
 
-      - name: Security Check: Mitigation Approval Gate & Bypass Audit
+      - name: "Security Check: Mitigation Approval Gate & Bypass Audit"
         id: mitigation-safety-gate
         run: |
           python -m pytest tests/test_mitigation_bypass.py tests/test_mitigation_approval_gate.py -v
