@@ -280,6 +280,28 @@ class PendingActionManager:
                     "executed": [{"command": f"OFPFlowMod DROP {attacker_ip}", "status": "LOGGED_NOT_EXECUTED"}],
                 }
 
+        if action_type == "cloudflare_scrub":
+            # Dispatch to CloudflareEnforcer.execute() for approved Cloudflare scrubbing actions
+            try:
+                from src.mitigation.cloud_enforcers.cloudflare import CloudflareEnforcer
+                enforcer = CloudflareEnforcer()
+                result = enforcer.execute(action)
+                return result
+            except ImportError as e:
+                logger.error("CloudflareEnforcer not available: %s", e)
+                return {
+                    "success": False,
+                    "message": f"CloudflareEnforcer module not available: {e}",
+                    "executed": [{"command": "Cloudflare Magic Transit API call", "status": "FAILED", "error": str(e)}],
+                }
+            except Exception as e:
+                logger.error("Failed to execute Cloudflare scrubbing action: %s", e)
+                return {
+                    "success": False,
+                    "message": f"Cloudflare execution failed: {e}",
+                    "executed": [{"command": "Cloudflare Magic Transit API call", "status": "FAILED", "error": str(e)}],
+                }
+
         # For system/container/firewall commands:
         # AGENTS.md Rule 2: "default to 'propose, don't execute' — log the recommended action".
         executed = []
