@@ -336,38 +336,42 @@ class CloudflareEnforcer:
         This is a safety requirement to comply with AGENTS.md Rule 2 and the
         Secrets management policy: "No API keys, tokens, or credentials in
         source files, ever. Load from environment variables or a gitignored .env file only."
+
+        REDACTION STRATEGY (Task 2):
+        - Target credential-shaped strings that follow recognizable prefixes
+        - Do NOT blindly redact all long alphanumeric strings (would corrupt
+          request IDs like "req_a1b2c3d4e5f6g7h8" or resource IDs)
         """
         import re
 
-        # Pattern to match Cloudflare-like API tokens (sk-or-v1- or similar patterns)
-        # Token patterns typically start with letters/digits followed by underscores/hyphens
-        token_patterns = [
-            r'sk-or-v1-[a-zA-Z0-9_-]+',  # OpenRouter / OpenAI style tokens
-            r'Bearer\s+[a-zA-Z0-9._-]+',  # Bearer tokens
-            r'token=[a-zA-Z0-9._-]+',     # URL query parameter tokens
-            r'api_key=[a-zA-Z0-9._-]+',   # API key patterns
-            r'password=[^&]*',              # Password patterns
+        # Pattern 1: Explicit credential patterns with prefixes
+        # Matches: "token abc123", "key=xyz", "bearer xyz", "auth xyz", "password xyz"
+        credential_prefixed = [
+            r'\b(?:token|key|bearer|auth|password|secret|api[_-]?key)\s*[:=]?\s*[a-zA-Z0-9_-]{8,}',
         ]
 
         sanitized = message
-        for pattern in token_patterns:
-            sanitized = re.sub(pattern, '[REDACTED]', sanitized, flags=re.IGNORECASE)
+        for pattern in credential_prefixed:
+            sanitized = re.sub(pattern, '[CREDENTIAL_REDACTED]', sanitized, flags=re.IGNORECASE)
 
-        # Additional: mask any string that looks like a long hex/alphanumeric token
-        # (32+ chars of alphanumeric characters that could be API tokens)
-        hex_token_pattern = r'[a-zA-Z0-9]{32,}'
-        sanitized = re.sub(hex_token_pattern, '[LONG_TOKEN_REDACTED]', sanitized)
+        # Pattern 2: Known token format prefixes (e.g., "sk-or-v1-", "cf-")
+        known_token_prefixes = [
+            r'sk-or-v1-[a-zA-Z0-9_-]+',   # OpenRouter / OpenAI style
+            r'Bearer\s+[a-zA-Z0-9._-]+',  # Bearer token in text
+            r'cf[_-]?[a-zA-Z0-9_-]{20,}', # Cloudflare-style tokens
+        ]
 
-        # Also sanitize any known token values from self.api_token
+        for pattern in known_token_prefixes:
+            sanitized = re.sub(pattern, '[TOKEN_REDACTED]', sanitized, flags=re.IGNORECASE)
+
+        # Pattern 3: The configured API token (redact if it appears literally)
         if self.api_token:
-            # Escape special regex chars in the token
-            escaped_token = re.escape(self.api_token)
-            sanitized = re.sub(escaped_token, '[REDACTED]', sanitized)
-
-        # Additional: catch common token-like patterns (alphanumeric + underscores/hyphens, 16+ chars)
-        # This catches tokens like SECRET_TOKEN_12345, test-token-abc123, etc.
-        token_like_pattern = r'[a-zA-Z0-9_-]{16,}'
-        sanitized = re.sub(token_like_pattern, '[TOKEN_REDACTED]', sanitized)
+            # Only redact if the token appears in a credential-like context
+            # (surrounded by special chars or part of a credential string)
+            escaped = re.escape(self.api_token)
+            # Match token when it appears after: space, =, :, or in quotes
+            context_pattern = rf'(?:[=\s"\':]|Bearer\s+){escaped}(?:\s|$|[,;])'
+            sanitized = re.sub(context_pattern, f'[TOKEN_REDACTED]', sanitized)
 
         return sanitized
 

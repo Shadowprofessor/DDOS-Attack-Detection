@@ -444,6 +444,43 @@ class TestCloudflareEnforcerSafetyContract:
             assert "api_token" not in call_url
             assert "token" not in call_url.split("?")[1] if "?" in call_url else True
 
+    def test_sanitization_preserves_request_ids(self, clean_manager, monkeypatch):
+        """
+        Task 2: Tightened redaction test.
+        Verify that real Cloudflare error messages containing request IDs
+        (e.g., "req_a1b2c3d4e5f6g7h8") survive sanitization intact, while
+        embedded tokens are properly redacted.
+        """
+        monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "mysecret_token_12345")
+        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "test-account-id")
+
+        enforcer = CloudflareEnforcer()
+
+        # Test case 1: Real Cloudflare error with request ID (should NOT be redacted)
+        real_error = "Cloudflare API error: rate limit exceeded for account test-account-id. Request ID: req_a1b2c3d4e5f6g7h8"
+        sanitized = enforcer._sanitize_error_message(real_error)
+        assert "req_a1b2c3d4e5f6g7h8" in sanitized, f"Request ID was incorrectly redacted: {sanitized}"
+        assert "test-account-id" in sanitized, f"Account ID was incorrectly redacted: {sanitized}"
+
+        # Test case 2: Error with embedded token (should be redacted)
+        token_error = "Connection failed using token mysecret_token_12345 in URL"
+        sanitized = enforcer._sanitize_error_message(token_error)
+        assert "mysecret_token_12345" not in sanitized, f"Token was not redacted: {sanitized}"
+        assert "REDACTED" in sanitized
+
+        # Test case 3: Error with both request ID and token
+        mixed_error = "Request req_z9y8x7w6v5u4t3s failed with token mysecret_token_12345. Request ID: req_a1b2c3d4e5f6g7h8"
+        sanitized = enforcer._sanitize_error_message(mixed_error)
+        assert "mysecret_token_12345" not in sanitized, f"Token not redacted in mixed error: {sanitized}"
+        assert "req_z9y8x7w6v5u4t3s" in sanitized, f"Request ID was incorrectly redacted: {sanitized}"
+        assert "req_a1b2c3d4e5f6g7h8" in sanitized, f"Request ID was incorrectly redacted: {sanitized}"
+
+        # Test case 4: Cloudflare-style resource ID (should NOT be redacted)
+        resource_error = "Route abc123def456 not found for zone zon_9876543210abcdef"
+        sanitized = enforcer._sanitize_error_message(resource_error)
+        assert "abc123def456" in sanitized, f"Resource ID was incorrectly redacted: {sanitized}"
+        assert "zon_9876543210abcdef" in sanitized, f"Zone ID was incorrectly redacted: {sanitized}"
+
     def test_multiple_propose_actions_do_not_trigger_api(self, clean_manager):
         """
         Proposing multiple Cloudflare actions in rapid succession must NEVER
