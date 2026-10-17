@@ -62,6 +62,10 @@ from src.features.capture_backends import (
     EbpfBackend,
     CLOUD_FLOW_LOG_POPULATED_FEATURES,
     CLOUD_FLOW_LOG_ZERO_FILLED_FEATURES,
+    EBPF_HOST_INGRESS_POPULATED_FEATURES,
+    EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES,
+    EBPF_TAP_POPULATED_FEATURES,
+    EBPF_TAP_ZERO_FILLED_FEATURES,
 )
 
 
@@ -116,6 +120,11 @@ class TestFeatureCompletenessAudit:
         all_features = set(CLOUD_FLOW_LOG_POPULATED_FEATURES).union(set(CLOUD_FLOW_LOG_ZERO_FILLED_FEATURES))
         assert all_features == set(CICFLOWMETER_FEATURE_NAMES)
 
+        all_ebpf_host = set(EBPF_HOST_INGRESS_POPULATED_FEATURES).union(set(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES))
+        assert all_ebpf_host == set(CICFLOWMETER_FEATURE_NAMES)
+        assert len(EBPF_HOST_INGRESS_POPULATED_FEATURES) == 54
+        assert len(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES) == 23
+
     def test_backend_completeness_properties(self):
         """Check completeness ratios reported by backend instances."""
         pcap_backend = LibpcapBackend()
@@ -126,9 +135,17 @@ class TestFeatureCompletenessAudit:
         assert cloud_backend.feature_completeness == 0.2468
         assert cloud_backend.backend_type == "cloud_flow_log"
 
+        # Host-ingress mode (default: 54/77 features, backward features unobserved without TC egress hook)
         ebpf_backend = EbpfBackend()
-        assert ebpf_backend.feature_completeness == 1.0
+        assert ebpf_backend.feature_completeness == 0.7013
         assert ebpf_backend.backend_type == "ebpf"
+        assert len(ebpf_backend.populated_features) == 54
+        assert len(ebpf_backend.zero_filled_features) == 23
+
+        # TAP/SPAN mode (inline mirror: both directions arrive at sensor NIC ingress)
+        ebpf_tap = EbpfBackend(deployment_mode="tap")
+        assert ebpf_tap.feature_completeness == 1.0
+        assert len(ebpf_tap.populated_features) == 77
 
 
 # ---------------------------------------------------------------------------
@@ -361,28 +378,32 @@ class TestCloudFlowLogBackend:
 
 
 # ---------------------------------------------------------------------------
-# Test 4: EbpfBackend (Stub Behavior & Roadmap Guidance)
+# Test 4: EbpfBackend (Phase 4 Implementation & Graceful Fallback)
 # ---------------------------------------------------------------------------
-class TestEbpfBackendStub:
-    """Test that EbpfBackend stub explicitly raises NotImplementedError pointing to Phase 4."""
+class TestEbpfBackendPhase4:
+    """Test that EbpfBackend implementation in Phase 4 starts cleanly and falls back gracefully."""
 
-    def test_ebpf_start_raises_not_implemented_with_phase_4_pointer(self):
+    def test_ebpf_lifecycle_and_feature_completeness(self):
         backend = EbpfBackend()
-        with pytest.raises(NotImplementedError) as exc_info:
-            backend.start()
+        assert backend.backend_type == "ebpf"
+        assert backend.feature_completeness == 0.7013
 
-        msg = str(exc_info.value)
-        assert "Phase 4" in msg
-        assert "LibpcapBackend" in msg
+        tap_backend = EbpfBackend(deployment_mode="tap")
+        assert tap_backend.feature_completeness == 1.0
 
-    def test_ebpf_stream_packets_raises_not_implemented_with_phase_4_pointer(self):
-        backend = EbpfBackend()
-        with pytest.raises(NotImplementedError) as exc_info:
-            next(backend.stream_packets())
+        backend.start()
+        assert backend.is_running is True
+        backend.stop()
+        assert backend.is_running is False
 
-        msg = str(exc_info.value)
-        assert "Phase 4" in msg
-        assert "LibpcapBackend" in msg
+    def test_ebpf_stream_packets_with_packet_list(self):
+        packets = _create_sample_packets()[:3]
+        backend = EbpfBackend(packet_list=packets)
+        backend.start()
+        streamed = list(backend.stream_packets())
+        assert len(streamed) == 3
+        assert backend.backend_type == "ebpf"
+        backend.stop()
 
 
 # ---------------------------------------------------------------------------
