@@ -1,0 +1,11 @@
+pytest
+scikit-learn
+xgboost
+pandas
+numpy
+scapy
+fastapi
+httpx
+pyyaml
+requests
+torch

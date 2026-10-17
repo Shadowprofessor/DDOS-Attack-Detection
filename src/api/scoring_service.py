@@ -20,11 +20,11 @@ import logging
 import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, Any, List, Dict
 
 import joblib
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
@@ -66,11 +66,15 @@ MAX_BATCH_SIZE = int(os.environ.get("DDOS_MAX_BATCH_SIZE", "1000"))
 # ---------------------------------------------------------------------------
 from src.features.flow_extractor import CICFLOWMETER_FEATURE_NAMES
 from src.mitigation.manager import get_manager
+from src.models.ensemble import get_default_ensemble
+from src.web.realtime_dashboard.broadcaster import get_broadcaster
+from src.web.realtime_dashboard.router import router as dashboard_router, STATIC_DIR
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     registry.load(MODEL_DIR)
+    await get_broadcaster().start()
     if _generated_dev_key:
         logger.warning(
             "\n"
@@ -91,7 +95,10 @@ async def lifespan(app: FastAPI):
             "======================================================================",
             _generated_dev_admin_key,
         )
-    yield
+    try:
+        yield
+    finally:
+        await get_broadcaster().stop()
 
 class ModelRegistry:
     """Holds loaded model artifacts. Instantiated once at app startup."""
@@ -200,6 +207,10 @@ class FlowFeatures(BaseModel):
         ...,
         description="Mapping of feature name -> numeric value (77 CICFlowMeter features)."
     )
+    history_window: Optional[List[Dict[str, float]]] = Field(
+        default=None,
+        description="Optional list of feature snapshots for temporal sequence models."
+    )
 
 class BatchFlowRequest(BaseModel):
     """Batch of flow feature vectors."""
@@ -214,10 +225,11 @@ class ScoringResult(BaseModel):
     confidence: float
     attack_family: Optional[str] = None
     attack_family_confidence: Optional[float] = None
+    per_model_breakdown: Optional[Dict[str, Any]] = None
 
 class FlowResponse(BaseModel):
     result: ScoringResult
-    model_version: str = "hierarchical-xgb-6class-v1"
+    model_version: str = "ensemble-rf-xgb-bilstm-v1"
 
 class BatchResponse(BaseModel):
     results: list[ScoringResult]
@@ -240,6 +252,11 @@ app.add_middleware(
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
+
+app.include_router(dashboard_router)
+if os.path.isdir(STATIC_DIR):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/dashboard/static", StaticFiles(directory=STATIC_DIR), name="dashboard_static")
 
 # ---------------------------------------------------------------------------
 # Auth dependencies
@@ -358,15 +375,66 @@ async def model_info():
     }
 
 @app.post("/score/flow", response_model=FlowResponse)
-async def score_flow(body: FlowFeatures, key: str = Depends(check_rate_limit)):
-    """Score a single network flow through the hierarchical pipeline."""
-    X = _preprocess_features(body.features)
-    result = _score_single(X)
-    logger.info(
-        "key=%s score_flow attack=%s family=%s conf=%.3f",
-        key[:8], result.is_attack, result.attack_family, result.confidence,
+async def score_flow(
+    body: FlowFeatures,
+    model: str = Query(
+        "xgb_only",
+        description="Scoring mode for real-time automated scoring: 'xgb_only' (default, <1ms latency), 'ensemble' (calibrated stacking), 'rf_xgb' (tabular blend), or 'rf_only'",
+    ),
+    key: str = Depends(check_rate_limit),
+):
+    """Score a single network flow through the calibrated ensemble or fallback mode."""
+    hw_matrix = None
+    if body.history_window is not None:
+        cols = registry.feature_cols
+        medians = registry.medians
+        hw_rows = []
+        for step in body.history_window:
+            row = [float(step.get(c, medians.get(c, 0.0))) for c in cols]
+            hw_rows.append(row)
+        if hw_rows:
+            hw_matrix = np.array(hw_rows, dtype=np.float32)
+
+    effective_mode = model
+    if body.history_window is not None and model == "xgb_only":
+        effective_mode = "ensemble"
+
+    ensemble = get_default_ensemble()
+    label, confidence, breakdown = ensemble.score_flow(
+        features=body.features,
+        history_window=hw_matrix,
+        mode=effective_mode,
     )
-    return FlowResponse(result=result)
+
+    is_attack = (label.lower() != "benign")
+    attack_family = label if is_attack else None
+    attack_family_confidence = confidence if is_attack else None
+
+    result = ScoringResult(
+        is_attack=is_attack,
+        confidence=confidence,
+        attack_family=attack_family,
+        attack_family_confidence=attack_family_confidence,
+        per_model_breakdown=breakdown,
+    )
+    logger.info(
+        "key=%s score_flow mode=%s attack=%s family=%s conf=%.3f",
+        key[:8], model, result.is_attack, result.attack_family, result.confidence,
+    )
+
+    # Decoupled fire-and-forget enqueue to dashboard broadcaster (Condition 2)
+    seq_info = (breakdown or {}).get("sequence_classifier") or {}
+    caveat_text = seq_info.get("caveat") if seq_info.get("active") else None
+    get_broadcaster().enqueue_flow({
+        "label": label,
+        "confidence": confidence,
+        "is_attack": is_attack,
+        "consensus_tier": (breakdown or {}).get("mode", model),
+        "per_model_breakdown": breakdown,
+        "caveat": caveat_text,
+    })
+
+    return FlowResponse(result=result, model_version="ensemble-rf-xgb-bilstm-v1")
 
 @app.post("/score/batch", response_model=BatchResponse)
 async def score_batch(body: BatchFlowRequest, key: str = Depends(check_rate_limit)):
@@ -466,6 +534,9 @@ async def approve_action_endpoint(action_id: str, admin_key: str = Depends(verif
     if not success:
         raise HTTPException(status_code=500, detail=f"Action execution failed: {message}")
 
+    pending = manager.get_pending()
+    get_broadcaster().broadcast_pending_update(list(pending.values()), len(pending))
+
     return {
         "status": "executed",
         "action_id": action_id,
@@ -497,6 +568,8 @@ async def reject_action_endpoint(
 
     reason = body.reason if body else ""
     success, message, updated_action = manager.reject(action_id, reason=reason, rejecter=f"admin_api:{admin_key[:8]}")
+    pending = manager.get_pending()
+    get_broadcaster().broadcast_pending_update(list(pending.values()), len(pending))
     return {
         "status": "rejected",
         "action_id": action_id,

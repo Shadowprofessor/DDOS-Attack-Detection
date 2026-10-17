@@ -11,6 +11,7 @@ Verifies:
 - Safety invariant: requires_human_approval MUST ALWAYS be True (even if LLM returns false)
 - Single unified pending-actions queue routing
 """
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 from Codes.security.ai_threat_analyzer import (
@@ -296,3 +297,217 @@ def test_api_alert_severity_confidence_fallback():
     res_med = analyzer.analyze_and_propose(api_med)
     assert res_med["severity"] == "MEDIUM"
     assert res_med["attack_type_guess"] == "UDP-Based"
+
+
+def test_summarize_ensemble_consensus_full_unanimous():
+    """Verify 3/3 model agreement is classified as FULL_UNANIMOUS."""
+    from src.agent.nemotron_agent import summarize_ensemble_consensus
+
+    breakdown = {
+        "random_forest": {"label": "WebDDoS", "confidence": 0.94},
+        "xgboost": {"label": "WebDDoS", "confidence": 0.98},
+        "sequence_classifier": {
+            "label": "WebDDoS",
+            "confidence": 0.89,
+            "active": True,
+            "caveat": "synthetic window caveat",
+        },
+    }
+    summary = summarize_ensemble_consensus(breakdown)
+    assert summary["status"] == "FULL_UNANIMOUS"
+    assert "WebDDoS" in summary["summary"]
+    assert len(summary["active_models"]) == 3
+
+
+def test_summarize_ensemble_consensus_tabular_unanimous_sequence_dissent():
+    """
+    Prompt 6 Condition 1 Test:
+    RF+XGB agree on attack while SequenceClassifier dissents.
+    MUST NOT be pulled down to SPLIT or MAJORITY like an equal-weight vote.
+    Must be classified as TABULAR_UNANIMOUS_SEQUENCE_DISSENT.
+    """
+    from src.agent.nemotron_agent import summarize_ensemble_consensus, NemotronAgent
+
+    breakdown = {
+        "random_forest": {"label": "WebDDoS", "confidence": 0.92},
+        "xgboost": {"label": "WebDDoS", "confidence": 0.95},
+        "sequence_classifier": {
+            "label": "UDP",
+            "confidence": 0.80,
+            "active": True,
+            "caveat": "Trained on synthetic pseudo-temporal windows; unverified on real sequences",
+        },
+    }
+    consensus = summarize_ensemble_consensus(breakdown)
+
+    # 1. Distinct consensus status preserving tabular high-confidence tier
+    assert consensus["status"] == "TABULAR_UNANIMOUS_SEQUENCE_DISSENT"
+    assert consensus["status"] != "SPLIT"
+    assert consensus["status"] != "MAJORITY"
+    assert consensus["status"] != "TABULAR_SPLIT"
+    assert consensus["status"] != "FULL_SPLIT"
+
+    # 2. Summary explicitly reflects tabular 85% decision weight and sequence unverified caveat
+    assert "85%" in consensus["summary"]
+    assert "unverified" in consensus["summary"]
+
+    # 3. Degraded mode fallback retains HIGH severity tier for tabular agreement
+    agent = NemotronAgent(api_key=None)
+    alert = {
+        "attacker_ip": "10.0.0.99",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "WebDDoS",
+        "confidence": 0.91,
+        "per_model_breakdown": breakdown,
+    }
+    res = agent.analyze_and_propose(alert)
+    assert res["severity"] == "HIGH"
+    assert res["consensus_status"] == "TABULAR_UNANIMOUS_SEQUENCE_DISSENT"
+    assert "tabular models (85% weight)" in res["explanation"]
+
+
+def test_single_model_degraded_severity_rule():
+    """
+    Prompt 6 Condition 2 Test:
+    Explicit separate severity rule for SINGLE_MODEL (e.g. live default xgb_only):
+    Severity is based purely on model confidence with NO consensus-based adjustment up or down.
+    """
+    from src.agent.nemotron_agent import summarize_ensemble_consensus, NemotronAgent
+
+    # 1. Single model breakdown (xgb_only)
+    breakdown_high = {
+        "xgboost": {"label": "Syn", "confidence": 0.92},
+        "sequence_classifier": {"label": "Unknown", "confidence": 0.0, "active": False},
+    }
+    consensus_high = summarize_ensemble_consensus(breakdown_high)
+    assert consensus_high["status"] == "SINGLE_MODEL"
+    assert consensus_high["details"]["active_model"] == "xgboost"
+
+    agent = NemotronAgent(api_key=None)
+
+    # 2. conf >= 0.85 -> HIGH severity
+    alert_high = {
+        "attacker_ip": "10.0.0.101",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.88,
+        "per_model_breakdown": breakdown_high,
+    }
+    res_high = agent.analyze_and_propose(alert_high)
+    assert res_high["severity"] == "HIGH"
+    assert res_high["consensus_status"] == "SINGLE_MODEL"
+    assert "single-model" in res_high["explanation"]
+
+    # 3. 0.70 <= conf < 0.85 -> MEDIUM severity (unaffected by lack of other models)
+    breakdown_med = {
+        "xgboost": {"label": "Syn", "confidence": 0.76},
+        "sequence_classifier": {"label": "Unknown", "confidence": 0.0, "active": False},
+    }
+    alert_med = {
+        "attacker_ip": "10.0.0.102",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.76,
+        "per_model_breakdown": breakdown_med,
+    }
+    res_med = agent.analyze_and_propose(alert_med)
+    assert res_med["severity"] == "MEDIUM"
+    assert res_med["consensus_status"] == "SINGLE_MODEL"
+
+    # 4. conf < 0.70 -> LOW severity
+    breakdown_low = {
+        "xgboost": {"label": "Syn", "confidence": 0.65},
+        "sequence_classifier": {"label": "Unknown", "confidence": 0.0, "active": False},
+    }
+    alert_low = {
+        "attacker_ip": "10.0.0.103",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.65,
+        "per_model_breakdown": breakdown_low,
+    }
+    # Direct normalize & batch propose to test low severity branch
+    norm_low = agent.normalize_alert(alert_low)
+    res_low = agent.analyze_batch_and_propose([norm_low])[0]
+    assert res_low["severity"] == "LOW"
+    assert res_low["consensus_status"] == "SINGLE_MODEL"
+
+
+def test_tabular_split_degraded_severity_downgrade():
+    """Verify that when tabular models (RF and XGB) disagree, severity is downgraded to MEDIUM."""
+    from src.agent.nemotron_agent import summarize_ensemble_consensus, NemotronAgent
+
+    breakdown = {
+        "random_forest": {"label": "Syn", "confidence": 0.90},
+        "xgboost": {"label": "UDP", "confidence": 0.89},
+        "sequence_classifier": {"active": False},
+    }
+    consensus = summarize_ensemble_consensus(breakdown)
+    assert consensus["status"] == "TABULAR_SPLIT"
+
+    agent = NemotronAgent(api_key=None)
+    alert = {
+        "attacker_ip": "10.0.0.104",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.89,
+        "per_model_breakdown": breakdown,
+    }
+    res = agent.analyze_and_propose(alert)
+    assert res["severity"] == "MEDIUM"
+    assert res["consensus_status"] == "TABULAR_SPLIT"
+    assert "model disagreement" in res["explanation"]
+
+
+@patch("requests.post")
+def test_prompt_template_formats_ensemble_breakdown_and_consensus(mock_post):
+    """Verify that prompt delivered to OpenRouter Nemotron includes structured consensus and model breakdown."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"explanation": "Verified consensus", "attack_type_guess": "WebDDoS", "severity": "HIGH", "proposed_action": "Block", "requires_human_approval": true}'
+                }
+            }
+        ]
+    }
+    mock_post.return_value = mock_resp
+
+    from src.agent.nemotron_agent import NemotronAgent
+
+    agent = NemotronAgent(api_key="mock-key")
+    alert = {
+        "attacker_ip": "10.0.0.105",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "WebDDoS",
+        "confidence": 0.94,
+        "per_model_breakdown": {
+            "random_forest": {"label": "WebDDoS", "confidence": 0.93},
+            "xgboost": {"label": "WebDDoS", "confidence": 0.97},
+            "sequence_classifier": {
+                "label": "Syn",
+                "confidence": 0.70,
+                "active": True,
+                "caveat": "synthetic windowing caveat",
+            },
+        },
+    }
+
+    res = agent.analyze_and_propose(alert)
+    assert res["requires_human_approval"] is True
+
+    # Inspect the prompt sent to the LLM
+    assert mock_post.call_count == 1
+    call_args, call_kwargs = mock_post.call_args
+    sent_payload = json.loads(call_kwargs["data"])
+    sent_prompt = sent_payload["messages"][1]["content"]
+
+    # Verify structured ensemble fields are present in prompt
+    assert "Consensus Tier: TABULAR_UNANIMOUS_SEQUENCE_DISSENT" in sent_prompt
+    assert "RF=WebDDoS (0.93)" in sent_prompt
+    assert "XGB=WebDDoS (0.97)" in sent_prompt
+    assert "LSTM=Syn (0.70)" in sent_prompt
+    assert "[synthetic windowing caveat]" in sent_prompt
+

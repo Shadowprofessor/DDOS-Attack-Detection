@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDoS Defense SOC — Real-Time Detection & Mitigation Dashboard</title>
+  <link rel="stylesheet" href="/dashboard/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="soc-app">
+    <!-- Top Navigation Bar -->
+    <header class="soc-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <span class="shield-pulse"></span>
+          🛡️
+        </div>
+        <div>
+          <h1>DDoS Defense SOC</h1>
+          <p class="subtitle">Layer 1/2 Ensemble Scoring &amp; Layer 3 Nemotron Triage Engine</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div id="connectionBadge" class="status-badge disconnected">
+          <span class="status-dot"></span>
+          <span id="connectionText">DISCONNECTED</span>
+        </div>
+
+        <div class="auth-box">
+          <label for="adminKeyInput" class="auth-label">Operator Admin Key:</label>
+          <div class="auth-input-group">
+            <input type="password" id="adminKeyInput" placeholder="Enter DDOS_ADMIN_KEYS..." autocomplete="off">
+            <button id="saveKeyBtn" class="btn btn-secondary">Set Key</button>
+          </div>
+          <span id="authStatusText" class="auth-hint">Stored in sessionStorage only</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="soc-main">
+      <!-- KPI Stats Grid -->
+      <section class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Live Flow Rate</span>
+            <span class="kpi-icon">⚡</span>
+          </div>
+          <div class="kpi-value"><span id="flowRateVal">0.0</span> <span class="kpi-unit">flows/s</span></div>
+          <div class="kpi-meta">Aggregate sampling ~10Hz</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Total Flows Scored</span>
+            <span class="kpi-icon">📊</span>
+          </div>
+          <div class="kpi-value" id="totalFlowsVal">0</div>
+          <div class="kpi-meta">Single-pass fast inference</div>
+        </div>
+
+        <div class="kpi-card alert-kpi">
+          <div class="kpi-header">
+            <span class="kpi-title">Attacks Detected</span>
+            <span class="kpi-icon">🚨</span>
+          </div>
+          <div class="kpi-value" id="totalAttacksVal">0</div>
+          <div class="kpi-meta">High-confidence malicious flows</div>
+        </div>
+
+        <div class="kpi-card pending-kpi">
+          <div class="kpi-header">
+            <span class="kpi-title">Pending Mitigation Actions</span>
+            <span class="kpi-icon">⚖️</span>
+          </div>
+          <div class="kpi-value" id="pendingCountVal">0</div>
+          <div class="kpi-meta">Awaiting Human-in-the-Loop Approval</div>
+        </div>
+      </section>
+
+      <!-- Charts & Telemetry Section -->
+      <section class="charts-row">
+        <!-- Live Flow-Rate Chart -->
+        <div class="chart-card flow-chart-card">
+          <div class="card-header">
+            <h3>Live Ingestion &amp; Traffic Volume</h3>
+            <span class="live-indicator">LIVE STREAM</span>
+          </div>
+          <div class="canvas-container">
+            <canvas id="flowCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Attack Taxonomy Breakdown -->
+        <div class="chart-card taxonomy-card">
+          <div class="card-header">
+            <h3>Attack Taxonomy Distribution</h3>
+            <span class="card-tag">13-Class Taxonomy</span>
+          </div>
+          <div id="taxonomyList" class="taxonomy-list">
+            <div class="empty-hint">Awaiting flow telemetry...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Action Approval Queue Section -->
+      <section class="actions-section">
+        <div class="actions-header">
+          <div>
+            <h2>Mitigation Approval Queue (Human-in-the-Loop Gate)</h2>
+            <p class="section-desc">
+              All proposed actions originate from Layer 3 Nemotron Agent triage. Actions are NEVER executed automatically.
+              Operators must review consensus context and approve explicitly.
+            </p>
+          </div>
+          <div class="actions-meta">
+            <button id="refreshActionsBtn" class="btn btn-secondary">↻ Refresh Queue</button>
+          </div>
+        </div>
+
+        <div id="actionFeedback" class="action-feedback hidden"></div>
+
+        <div class="table-container">
+          <table class="actions-table">
+            <thead>
+              <tr>
+                <th>Action ID &amp; Target</th>
+                <th>Attack Vector</th>
+                <th>Confidence &amp; Severity</th>
+                <th>Ensemble Consensus &amp; Model Breakdown</th>
+                <th>Proposed Enforcement</th>
+                <th class="text-right">Decision Gate</th>
+              </tr>
+            </thead>
+            <tbody id="actionsTbody">
+              <tr>
+                <td colspan="6" class="empty-row">No pending actions in queue. System secure.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Live Flow Feed -->
+      <section class="feed-section">
+        <div class="card-header">
+          <h3>Sampled Flow Telemetry Feed</h3>
+          <span class="feed-sub">Recent sampled network flows from scoring hot path</span>
+        </div>
+        <div id="flowFeed" class="flow-feed">
+          <div class="empty-hint">Waiting for live flow events...</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/dashboard/static/app.js"></script>
+</body>
+</html>

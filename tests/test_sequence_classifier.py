@@ -37,6 +37,10 @@ def dummy_features():
 def sequence_clf():
     """Create a default SequenceClassifier instance on CPU."""
     torch.manual_seed(42)
+    try:
+        torch.set_num_threads(1)
+    except Exception:
+        pass
     return SequenceClassifier(window_size=10, device="cpu")
 
 
@@ -144,7 +148,7 @@ def test_inference_latency(sequence_clf, dummy_features):
     """Verify single-window inference latency is well under 50ms per window."""
     latencies = []
     # Warmup
-    for _ in range(5):
+    for _ in range(15):
         _ = sequence_clf.predict_window(dummy_features)
 
     # Measure 50 iterations

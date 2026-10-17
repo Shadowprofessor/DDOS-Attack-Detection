@@ -153,12 +153,13 @@ class DDoSClassifier:
 
         X_proc = self._sanitize_features(X)
 
-        pred_idx = self.model.predict(X_proc)[0]
         if hasattr(self.model, "predict_proba"):
             probs = self.model.predict_proba(X_proc)[0]
-            conf = float(np.max(probs))
+            pred_idx = int(np.argmax(probs))
+            conf = float(probs[pred_idx])
             prob_dict = {self.classes[i]: float(probs[i]) for i in range(len(self.classes)) if i < len(probs)}
         else:
+            pred_idx = self.model.predict(X_proc)[0]
             conf = 1.0
             prob_dict = {self.classes[pred_idx] if isinstance(pred_idx, (int, np.integer)) else str(pred_idx): 1.0}
 
@@ -189,11 +190,12 @@ class DDoSClassifier:
             X_mat = np.asarray(X, dtype=np.float64)
 
         X_proc = self._sanitize_features(X_mat)
-        preds = self.model.predict(X_proc)
 
         if hasattr(self.model, "predict_proba"):
             probs = self.model.predict_proba(X_proc)
+            preds = np.argmax(probs, axis=1)
         else:
+            preds = self.model.predict(X_proc)
             probs = None
 
         results = []
