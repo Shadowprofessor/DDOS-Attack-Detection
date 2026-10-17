@@ -559,6 +559,74 @@ def test_degraded_confidence_blocks_critical_escalation():
     assert "[DEGRADED INPUT]" in action["reason"]
 
 
+def test_forced_zero_backward_features_blocks_critical_severity_fallback():
+    """
+    Standalone test for hardest-condition degraded alert:
+    Constructs an alert where unanimous model consensus and extreme 0.98 raw confidence
+    would reach CRITICAL severity in the non-degraded baseline (tested explicitly).
+    When the alert is subjected to the forced-zero host_ingress blindspot (Bwd Packets/s = 0.0,
+    Down/Up Ratio = 0.0, 23 backward features zero-filled, feature_completeness = 0.7013,
+    degraded_confidence = True), the heuristic fallback strictly caps the severity below CRITICAL
+    to HIGH, and prepends [DEGRADED INPUT] to the explanation and proposed action reason.
+    """
+    from src.agent.nemotron_agent import NemotronAgent, get_action
+
+    agent = NemotronAgent(api_key=None)
+
+    # 1. Baseline: under full telemetry, 0.98 unanimous confidence reaches CRITICAL
+    baseline_alert = {
+        "attacker_ip": "192.168.10.77",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.98,
+        "per_model_breakdown": {
+            "random_forest": {"label": "Syn", "confidence": 0.98},
+            "xgboost": {"label": "Syn", "confidence": 0.98},
+            "sequence_classifier": {"label": "Syn", "confidence": 0.97, "active": True},
+        },
+        "feature_completeness": 1.0,
+        "degraded_confidence": False,
+    }
+    baseline_res = agent.analyze_and_propose(baseline_alert)
+    assert baseline_res["severity"] == "CRITICAL", (
+        f"Baseline should reach CRITICAL with 0.98 unanimous confidence, got {baseline_res['severity']}"
+    )
+
+    # 2. Hardest-condition case: same 0.98 confidence, but with host_ingress forced-zero pattern
+    degraded_alert = {
+        "attacker_ip": "192.168.10.77",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.98,
+        "per_model_breakdown": {
+            "random_forest": {"label": "Syn", "confidence": 0.98},
+            "xgboost": {"label": "Syn", "confidence": 0.98},
+            "sequence_classifier": {"label": "Syn", "confidence": 0.97, "active": True},
+            "degraded_confidence": True,
+            "feature_completeness": 0.7013,
+            "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+        },
+        "feature_completeness": 0.7013,
+        "degraded_confidence": True,
+        "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+    }
+    degraded_res = agent.analyze_and_propose(degraded_alert)
+
+    # Assert severity is capped below CRITICAL to HIGH
+    assert degraded_res["severity"] == "HIGH", (
+        f"Expected severity HIGH (capped below CRITICAL), got {degraded_res['severity']}"
+    )
+    assert "[DEGRADED INPUT]" in degraded_res["explanation"]
+    assert degraded_res["degraded_confidence"] is True
+    assert degraded_res["feature_completeness"] == 0.7013
+    assert degraded_res["requires_human_approval"] is True
+
+    # Assert pending action store preserves [DEGRADED INPUT] in reason
+    action = get_action(degraded_res["proposed_action_id"])
+    assert action is not None
+    assert "[DEGRADED INPUT]" in action["reason"]
+
+
 @patch("requests.post")
 def test_prompt_formats_input_degradation_warning(mock_post):
     """
