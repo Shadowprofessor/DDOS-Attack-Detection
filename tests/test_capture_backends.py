@@ -361,28 +361,29 @@ class TestCloudFlowLogBackend:
 
 
 # ---------------------------------------------------------------------------
-# Test 4: EbpfBackend (Stub Behavior & Roadmap Guidance)
+# Test 4: EbpfBackend (Phase 4 Implementation & Graceful Fallback)
 # ---------------------------------------------------------------------------
-class TestEbpfBackendStub:
-    """Test that EbpfBackend stub explicitly raises NotImplementedError pointing to Phase 4."""
+class TestEbpfBackendPhase4:
+    """Test that EbpfBackend implementation in Phase 4 starts cleanly and falls back gracefully."""
 
-    def test_ebpf_start_raises_not_implemented_with_phase_4_pointer(self):
+    def test_ebpf_lifecycle_and_feature_completeness(self):
         backend = EbpfBackend()
-        with pytest.raises(NotImplementedError) as exc_info:
-            backend.start()
+        assert backend.backend_type == "ebpf"
+        assert backend.feature_completeness == 1.0
 
-        msg = str(exc_info.value)
-        assert "Phase 4" in msg
-        assert "LibpcapBackend" in msg
+        backend.start()
+        assert backend.is_running is True
+        backend.stop()
+        assert backend.is_running is False
 
-    def test_ebpf_stream_packets_raises_not_implemented_with_phase_4_pointer(self):
-        backend = EbpfBackend()
-        with pytest.raises(NotImplementedError) as exc_info:
-            next(backend.stream_packets())
-
-        msg = str(exc_info.value)
-        assert "Phase 4" in msg
-        assert "LibpcapBackend" in msg
+    def test_ebpf_stream_packets_with_packet_list(self):
+        packets = _create_sample_packets()[:3]
+        backend = EbpfBackend(packet_list=packets)
+        backend.start()
+        streamed = list(backend.stream_packets())
+        assert len(streamed) == 3
+        assert backend.backend_type == "ebpf"
+        backend.stop()
 
 
 # ---------------------------------------------------------------------------

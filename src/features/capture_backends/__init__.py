@@ -9,7 +9,11 @@ from src.features.capture_backends.cloud_flow_log_backend import (
     CLOUD_FLOW_LOG_POPULATED_FEATURES,
     CLOUD_FLOW_LOG_ZERO_FILLED_FEATURES,
 )
-from src.features.capture_backends.ebpf_backend import EbpfBackend
+from src.features.capture_backends.ebpf_backend import (
+    EbpfBackend,
+    EBPF_POPULATED_FEATURES,
+    EBPF_ZERO_FILLED_FEATURES,
+)
 
 __all__ = [
     "CaptureBackend",
@@ -18,4 +22,6 @@ __all__ = [
     "EbpfBackend",
     "CLOUD_FLOW_LOG_POPULATED_FEATURES",
     "CLOUD_FLOW_LOG_ZERO_FILLED_FEATURES",
+    "EBPF_POPULATED_FEATURES",
+    "EBPF_ZERO_FILLED_FEATURES",
 ]
