@@ -45,6 +45,8 @@ def test_exported_artifacts_inference_and_performance():
         taxonomy_config = json.load(f)
 
     # Load all 17 parquet files to build a representative dataset sample
+    if not os.path.isdir(DATA_DIR):
+        pytest.skip("Dataset directory not present (CI environment)")
     all_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith('.parquet')])
     if not all_files:
         pytest.skip("No dataset parquet files found")
