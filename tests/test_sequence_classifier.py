@@ -160,6 +160,12 @@ def test_inference_latency(sequence_clf, dummy_features):
 
     p95_latency = np.percentile(latencies, 95)
     mean_latency = np.mean(latencies)
+    min_latency = np.min(latencies)
+    max_latency = np.max(latencies)
+
+    # Print measured latencies for verification (visible with pytest -s)
+    print(f"\n[INFERENCE LATENCY] mean={mean_latency:.2f}ms, p95={p95_latency:.2f}ms, min={min_latency:.2f}ms, max={max_latency:.2f}ms")
+
     assert p95_latency < 50.0, f"95th percentile latency {p95_latency:.2f}ms exceeds 50ms limit"
     assert mean_latency < 20.0, f"Mean latency {mean_latency:.2f}ms unexpectedly high"
 
