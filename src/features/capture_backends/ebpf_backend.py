@@ -28,21 +28,69 @@ from src.ebpf.loader import XDPFlowProbeLoader, MockBPFDriver
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Feature Completeness Audit (77/77 Populated)
+# Feature Completeness Audit: Ingress-Only vs. Bidirectional TAP Topologies
 # ---------------------------------------------------------------------------
-# The XDP probe extracts: 5-tuple, packet timestamp_ns, payload_len, header_len,
-# tcp_flags (8 bits), and tcp_window. FlowExtractor uses these fields to compute
-# all 77 features (rates, durations, statistical variances, flags, and windows)
-# across each flow's lifetime. No features require application-layer payload inspection.
-EBPF_POPULATED_FEATURES: List[str] = list(CICFLOWMETER_FEATURE_NAMES)
-EBPF_ZERO_FILLED_FEATURES: List[str] = [
-    f for f in CICFLOWMETER_FEATURE_NAMES if f not in EBPF_POPULATED_FEATURES
+# In Linux, XDP is strictly an ingress-only hook (operating at driver/NIC RX).
+# To observe bidirectional traffic (both forward and backward directions of a flow),
+# two deployment models exist:
+#
+# 1. Host-End Ingress Mode ('host_ingress' — default for endpoint protection):
+#    The probe attaches to a local server interface (e.g. eth0). Incoming client/attack
+#    packets hit the XDP ingress hook. However, outgoing server responses bypass XDP
+#    because Linux XDP has no egress hook (capturing egress on the same host requires
+#    a companion TC clsact/tcx hook). Consequently, backward-direction packets are
+#    genuinely not observed, leaving 23 backward-dependent features unobserved/zero-filled.
+#    In this mode, feature_completeness is 54 / 77 ≈ 0.7013.
+#
+# 2. SPAN / TAP / Middlebox Mode ('tap'):
+#    The detector runs on a monitoring appliance attached to a network TAP or switch
+#    SPAN/mirror port. The switch mirrors both TX and RX traffic to the sensor's NIC.
+#    Both directions arrive as ingress packets at the XDP hook, yielding 100% (77/77)
+#    feature completeness (including reverse IAT, backward volumes, and down/up ratios).
+
+EBPF_BACKWARD_FEATURES: List[str] = [
+    "Total Backward Packets",
+    "Bwd Packets Length Total",
+    "Bwd Packet Length Max",
+    "Bwd Packet Length Min",
+    "Bwd Packet Length Mean",
+    "Bwd Packet Length Std",
+    "Bwd IAT Total",
+    "Bwd IAT Mean",
+    "Bwd IAT Std",
+    "Bwd IAT Max",
+    "Bwd IAT Min",
+    "Bwd PSH Flags",
+    "Bwd URG Flags",
+    "Bwd Header Length",
+    "Bwd Packets/s",
+    "Down/Up Ratio",
+    "Avg Bwd Segment Size",
+    "Bwd Avg Bytes/Bulk",
+    "Bwd Avg Packets/Bulk",
+    "Bwd Avg Bulk Rate",
+    "Subflow Bwd Packets",
+    "Subflow Bwd Bytes",
+    "Init Bwd Win Bytes",
 ]
 
-assert len(EBPF_POPULATED_FEATURES) + len(EBPF_ZERO_FILLED_FEATURES) == 77, (
-    f"eBPF feature partition mismatch: {len(EBPF_POPULATED_FEATURES)} + "
-    f"{len(EBPF_ZERO_FILLED_FEATURES)} != 77"
-)
+# Host Ingress Partition (54 populated, 23 zero-filled)
+EBPF_HOST_INGRESS_POPULATED_FEATURES: List[str] = [
+    f for f in CICFLOWMETER_FEATURE_NAMES if f not in EBPF_BACKWARD_FEATURES
+]
+EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES: List[str] = list(EBPF_BACKWARD_FEATURES)
+
+# TAP / SPAN Partition (77 populated, 0 zero-filled)
+EBPF_TAP_POPULATED_FEATURES: List[str] = list(CICFLOWMETER_FEATURE_NAMES)
+EBPF_TAP_ZERO_FILLED_FEATURES: List[str] = []
+
+# Module defaults reflect host-ingress (the default operational mode of the ingress-only probe)
+EBPF_POPULATED_FEATURES: List[str] = EBPF_HOST_INGRESS_POPULATED_FEATURES
+EBPF_ZERO_FILLED_FEATURES: List[str] = EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES
+
+assert len(EBPF_HOST_INGRESS_POPULATED_FEATURES) == 54
+assert len(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES) == 23
+assert len(EBPF_HOST_INGRESS_POPULATED_FEATURES) + len(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES) == 77
 
 
 class EbpfBackend(CaptureBackend):
@@ -55,6 +103,7 @@ class EbpfBackend(CaptureBackend):
         loader: Optional custom ``XDPFlowProbeLoader`` instance.
         fallback_to_libpcap: If True, falls back to ``LibpcapBackend`` when XDP attachment fails.
         count: Maximum number of packets to process (0 = unlimited).
+        deployment_mode: 'host_ingress' (default, 54/77 features, 0.7013) or 'tap' (inline/SPAN, 77/77 features, 1.0).
     """
 
     def __init__(
@@ -65,6 +114,7 @@ class EbpfBackend(CaptureBackend):
         loader: Optional[XDPFlowProbeLoader] = None,
         fallback_to_libpcap: bool = True,
         count: int = 0,
+        deployment_mode: str = "host_ingress",
     ):
         super().__init__()
         self.interface = interface
@@ -73,6 +123,16 @@ class EbpfBackend(CaptureBackend):
         self.loader = loader
         self.fallback_to_libpcap = fallback_to_libpcap
         self.count = count
+        self.deployment_mode = deployment_mode
+
+        if self.deployment_mode == "tap":
+            self.populated_features = list(EBPF_TAP_POPULATED_FEATURES)
+            self.zero_filled_features = list(EBPF_TAP_ZERO_FILLED_FEATURES)
+            self._feature_completeness = 1.0
+        else:
+            self.populated_features = list(EBPF_HOST_INGRESS_POPULATED_FEATURES)
+            self.zero_filled_features = list(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES)
+            self._feature_completeness = round(len(self.populated_features) / 77.0, 4)  # 0.7013
 
         self._fallback_backend: Optional[LibpcapBackend] = None
         self.is_fallback: bool = False
@@ -84,8 +144,8 @@ class EbpfBackend(CaptureBackend):
 
     @property
     def feature_completeness(self) -> float:
-        """Proportion of the 77 CICFlowMeter features measurable by this backend (77/77 = 1.0)."""
-        return len(EBPF_POPULATED_FEATURES) / 77.0
+        """Proportion of the 77 CICFlowMeter features measurable by this backend."""
+        return self._feature_completeness
 
     def start(self) -> None:
         """Initialize and attach the eBPF/XDP capture probe."""
@@ -189,6 +249,7 @@ class EbpfBackend(CaptureBackend):
         stats: Dict[str, Any] = {
             "backend_type": self.backend_type,
             "feature_completeness": self.feature_completeness,
+            "deployment_mode": self.deployment_mode,
             "is_running": self._is_running,
             "is_fallback": self.is_fallback,
             "interface": self.interface,

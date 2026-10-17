@@ -30,6 +30,9 @@ from src.ebpf.loader import (
 )
 from src.features.capture_backends.ebpf_backend import (
     EbpfBackend,
+    EBPF_BACKWARD_FEATURES,
+    EBPF_HOST_INGRESS_POPULATED_FEATURES,
+    EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES,
     EBPF_POPULATED_FEATURES,
     EBPF_ZERO_FILLED_FEATURES,
 )
@@ -99,17 +102,26 @@ def test_packet_event_struct_binary_unpacking():
 # ---------------------------------------------------------------------------
 def test_feature_completeness_partition_77_features():
     """
-    Prompt 10 Amendment 1:
-    Confirm all 77 CICFlowMeter features are computable from XDP packet_event fields
-    (5-tuple, timestamps, lengths, flags, window). Populated = 77, Zero-filled = 0.
+    Prompt 10 Audit:
+    - In host_ingress mode (default endpoint protection, XDP ingress only without TC egress hook),
+      backward packets are not observed, yielding 54 populated and 23 zero-filled features (0.7013).
+    - In tap/SPAN mode (inline monitoring / switch mirror), both directions arrive at the sensor NIC
+      yielding 77 populated and 0 zero-filled features (1.0).
     """
-    assert len(EBPF_POPULATED_FEATURES) == 77
-    assert len(EBPF_ZERO_FILLED_FEATURES) == 0
-    assert len(EBPF_POPULATED_FEATURES) + len(EBPF_ZERO_FILLED_FEATURES) == 77
+    assert len(EBPF_HOST_INGRESS_POPULATED_FEATURES) == 54
+    assert len(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES) == 23
+    assert len(EBPF_HOST_INGRESS_POPULATED_FEATURES) + len(EBPF_HOST_INGRESS_ZERO_FILLED_FEATURES) == 77
 
+    # Default host_ingress backend
     backend = EbpfBackend()
-    assert backend.feature_completeness == 1.0
+    assert backend.feature_completeness == 0.7013
     assert backend.backend_type == "ebpf"
+    assert backend.deployment_mode == "host_ingress"
+
+    # TAP/SPAN mode
+    tap_backend = EbpfBackend(deployment_mode="tap")
+    assert tap_backend.feature_completeness == 1.0
+    assert tap_backend.deployment_mode == "tap"
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +181,7 @@ def test_mock_ring_buffer_streaming_to_flow_extractor():
     for ev in events:
         driver.push_mock_event(ev)
 
-    backend = EbpfBackend(loader=loader, count=3)
+    backend = EbpfBackend(loader=loader, count=3, deployment_mode="tap")
     extractor = FlowExtractor(backend=backend)
     flows = extractor.extract_from_backend()
 
@@ -192,6 +204,62 @@ def test_mock_ring_buffer_streaming_to_flow_extractor():
     vec = flow.to_feature_vector()
     assert len(vec) == 77
     assert all(not (x != x) for x in vec)  # No NaNs
+
+
+def test_host_ingress_mode_zero_fills_backward_features():
+    """
+    Audit host_ingress deployment mode:
+    Single host interface without TC egress hook only captures forward ingress packets.
+    All 23 backward features must be zero-filled and feature_completeness must equal 0.7013.
+    """
+    driver = MockBPFDriver()
+    loader = XDPFlowProbeLoader(driver=driver, interface="eth0")
+    loader.attach()
+
+    base_time_ns = 1_700_000_000_000_000_000
+    # Two forward-only packets (attack/ingress flood)
+    driver.push_mock_event(pack_packet_event(
+        timestamp_ns=base_time_ns,
+        src_ip="192.168.1.10",
+        dst_ip="10.0.0.1",
+        src_port=1234,
+        dst_port=80,
+        protocol=6,
+        tcp_flags=0x02,
+        payload_len=0,
+        header_len=40,
+        tcp_window=64240,
+    ))
+    driver.push_mock_event(pack_packet_event(
+        timestamp_ns=base_time_ns + 10_000_000,
+        src_ip="192.168.1.10",
+        dst_ip="10.0.0.1",
+        src_port=1234,
+        dst_port=80,
+        protocol=6,
+        tcp_flags=0x10,
+        payload_len=1200,
+        header_len=40,
+        tcp_window=64240,
+    ))
+
+    backend = EbpfBackend(loader=loader, count=2, deployment_mode="host_ingress")
+    extractor = FlowExtractor(backend=backend)
+    flows = extractor.extract_from_backend()
+
+    assert len(flows) == 1
+    flow = flows[0]
+    assert flow.feature_completeness == 0.7013
+    assert flow.backend_type == "ebpf"
+
+    feat_dict = flow.to_feature_dict()
+    assert feat_dict["Total Fwd Packets"] == 2.0
+    assert feat_dict["Fwd Packets Length Total"] == 1200.0
+
+    # All 23 backward features must be strictly 0.0
+    for bwd_feat in EBPF_BACKWARD_FEATURES:
+        assert feat_dict[bwd_feat] == 0.0, f"Expected {bwd_feat} to be 0.0 in host_ingress mode"
+
 
 
 # ---------------------------------------------------------------------------
