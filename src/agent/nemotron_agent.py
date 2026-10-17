@@ -332,6 +332,24 @@ class NemotronAgent:
         breakdown = raw_alert.get("per_model_breakdown")
         consensus = summarize_ensemble_consensus(breakdown)
 
+        # Extract feature completeness and degradation metadata
+        comp = raw_alert.get("feature_completeness")
+        if comp is None and isinstance(breakdown, dict):
+            comp = breakdown.get("feature_completeness")
+        try:
+            comp_float = float(comp) if comp is not None else 1.0
+        except (ValueError, TypeError):
+            comp_float = 1.0
+
+        degraded = raw_alert.get("degraded_confidence")
+        if degraded is None and isinstance(breakdown, dict):
+            degraded = breakdown.get("degraded_confidence")
+        degraded_bool = bool(degraded) if degraded is not None else (comp_float < 1.0)
+
+        deg_reason = raw_alert.get("degradation_reason")
+        if deg_reason is None and isinstance(breakdown, dict):
+            deg_reason = breakdown.get("degradation_reason")
+
         return {
             "attacker_ip": str(attacker_ip),
             "victim_ip": str(victim_ip),
@@ -342,6 +360,9 @@ class NemotronAgent:
             "source": str(source),
             "per_model_breakdown": breakdown,
             "ensemble_consensus": consensus,
+            "feature_completeness": comp_float,
+            "degraded_confidence": degraded_bool,
+            "degradation_reason": deg_reason,
             "raw_alert": raw_alert,
         }
 
@@ -427,7 +448,10 @@ class NemotronAgent:
                 "3. TABULAR_SPLIT / FULL_SPLIT: Tabular models disagree; treat with caution, reduce blast-radius severity, "
                 "favor rate-limiting or targeted inspection over broad blocking.\n"
                 "4. SINGLE_MODEL: Base confidence purely on the single model's reported confidence.\n"
-                "5. The value of \"requires_human_approval\" MUST ALWAYS be true."
+                "5. The value of \"requires_human_approval\" MUST ALWAYS be true.\n"
+                "6. INPUT DEGRADATION (feature_completeness < 1.0): Backward features may be zero-filled depending on capture mode. "
+                "Evaluate if the attack signature relies on bidirectional response patterns; favor rate-limiting or canary validation "
+                "over immediate total null-routing if confidence is distorted by asymmetric visibility."
             )
             payload = {
                 "model": self.model,
@@ -529,6 +553,14 @@ class NemotronAgent:
                 if model_parts:
                     lines.append(f"    Per-Model Predictions: {', '.join(model_parts)}")
 
+                if alert.get("degraded_confidence"):
+                    comp_f = alert.get("feature_completeness", 1.0)
+                    deg_r = alert.get("degradation_reason") or "unobserved features"
+                    lines.append(
+                        f"    ⚠️ Input Degradation: Feature completeness is {comp_f:.2f} ({deg_r}). "
+                        f"Evaluate possibility of evasion or distorted asymmetric flood dynamics."
+                    )
+
                 alert_summaries.append("\n".join(lines))
 
             prompt = (
@@ -608,6 +640,11 @@ class NemotronAgent:
                     attack_type_guess = attack_type
                     proposed_act = f"Block attacker IP {attacker_ip} via iptables and SDN drop."
 
+                    if alert.get("degraded_confidence"):
+                        explanation = f"[DEGRADED INPUT] {explanation}"
+                        if severity == "CRITICAL":
+                            severity = "HIGH"
+
                 proposed_commands = [
                     f"iptables -I INPUT -s {attacker_ip} -j DROP",
                     f"docker exec <container_id> iptables -A OUTPUT -d {victim_ip} -j DROP",
@@ -635,6 +672,9 @@ class NemotronAgent:
                     "requires_human_approval": True,  # Hardcoded True
                     "status": "PROPOSED",
                     "consensus_status": consensus_status,
+                    "feature_completeness": alert.get("feature_completeness", 1.0),
+                    "degraded_confidence": alert.get("degraded_confidence", False),
+                    "degradation_reason": alert.get("degradation_reason"),
                 }
                 results.append(res_dict)
 

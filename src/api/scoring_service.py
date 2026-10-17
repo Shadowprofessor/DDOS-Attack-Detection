@@ -211,6 +211,22 @@ class FlowFeatures(BaseModel):
         default=None,
         description="Optional list of feature snapshots for temporal sequence models."
     )
+    feature_completeness: Optional[float] = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Proportion of features populated by capture backend in [0.0, 1.0]."
+    )
+    source_mode: Optional[str] = Field(
+        default=None,
+        description="Capture provenance mode (e.g. 'host_ingress', 'cloud_flow_log', 'tap', 'libpcap')."
+    )
+
+    @classmethod
+    def from_flow(cls, flow: Any, backend: Optional[Any] = None) -> "FlowFeatures":
+        """Construct FlowFeatures directly from a Flow dataclass instance, extracting backend telemetry."""
+        payload = flow.to_flow_features(backend=backend)
+        return cls(**payload)
 
 class BatchFlowRequest(BaseModel):
     """Batch of flow feature vectors."""
@@ -226,6 +242,9 @@ class ScoringResult(BaseModel):
     attack_family: Optional[str] = None
     attack_family_confidence: Optional[float] = None
     per_model_breakdown: Optional[Dict[str, Any]] = None
+    feature_completeness: float = 1.0
+    degraded_confidence: bool = False
+    degradation_reason: Optional[str] = None
 
 class FlowResponse(BaseModel):
     result: ScoringResult
@@ -404,11 +423,18 @@ async def score_flow(
         features=body.features,
         history_window=hw_matrix,
         mode=effective_mode,
+        feature_completeness=body.feature_completeness,
+        source_mode=body.source_mode,
     )
 
     is_attack = (label.lower() != "benign")
     attack_family = label if is_attack else None
     attack_family_confidence = confidence if is_attack else None
+
+    # Extract degraded confidence telemetry populated by score_flow
+    degraded_conf = bool((breakdown or {}).get("degraded_confidence", False))
+    comp_val = float((breakdown or {}).get("feature_completeness", body.feature_completeness if body.feature_completeness is not None else 1.0))
+    deg_reason = (breakdown or {}).get("degradation_reason", None)
 
     result = ScoringResult(
         is_attack=is_attack,
@@ -416,10 +442,13 @@ async def score_flow(
         attack_family=attack_family,
         attack_family_confidence=attack_family_confidence,
         per_model_breakdown=breakdown,
+        feature_completeness=comp_val,
+        degraded_confidence=degraded_conf,
+        degradation_reason=deg_reason,
     )
     logger.info(
-        "key=%s score_flow mode=%s attack=%s family=%s conf=%.3f",
-        key[:8], model, result.is_attack, result.attack_family, result.confidence,
+        "key=%s score_flow mode=%s attack=%s family=%s conf=%.3f degraded=%s",
+        key[:8], model, result.is_attack, result.attack_family, result.confidence, degraded_conf,
     )
 
     # Decoupled fire-and-forget enqueue to dashboard broadcaster (Condition 2)
@@ -432,6 +461,9 @@ async def score_flow(
         "consensus_tier": (breakdown or {}).get("mode", model),
         "per_model_breakdown": breakdown,
         "caveat": caveat_text,
+        "feature_completeness": comp_val,
+        "degraded_confidence": degraded_conf,
+        "degradation_reason": deg_reason,
     })
 
     return FlowResponse(result=result, model_version="ensemble-rf-xgb-bilstm-v1")

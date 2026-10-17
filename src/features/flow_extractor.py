@@ -265,6 +265,7 @@ class Flow:
     # Backend provenance & completeness tracking
     backend_type: str = "libpcap"
     feature_completeness: float = 1.0
+    source_mode: Optional[str] = None
 
     # Threshold for bulk detection (seconds)
     _BULK_THRESHOLD: float = field(default=1.0, repr=False)
@@ -555,6 +556,32 @@ class Flow:
         vec = self.to_feature_vector()
         return dict(zip(CICFLOWMETER_FEATURE_NAMES, vec))
 
+    def to_flow_features(self, backend: Optional[Any] = None) -> Dict[str, Any]:
+        """Export flow as payload dictionary for FastAPI /score/flow FlowFeatures schema.
+
+        Resolves feature_completeness and source_mode directly from the active
+        CaptureBackend instance or flow provenance, bridging Layer 1 telemetry to Layer 2 scoring.
+        """
+        active_backend = backend
+        comp = getattr(active_backend, "feature_completeness", None) if active_backend else None
+        if comp is None:
+            comp = getattr(self, "feature_completeness", 1.0)
+
+        mode = (
+            getattr(active_backend, "deployment_mode", None)
+            or getattr(active_backend, "backend_type", None)
+            if active_backend
+            else None
+        )
+        if mode is None:
+            mode = getattr(self, "source_mode", None) or getattr(self, "backend_type", None)
+
+        return {
+            "features": self.to_feature_dict(),
+            "feature_completeness": float(comp),
+            "source_mode": str(mode) if mode else None,
+        }
+
 
 # ---------------------------------------------------------------------------
 # FlowExtractor — manages a table of active flows
@@ -612,6 +639,12 @@ class FlowExtractor:
             if flow is None:
                 backend_type = getattr(self.backend, "backend_type", "libpcap") if self.backend else "libpcap"
                 completeness = getattr(self.backend, "feature_completeness", 1.0) if self.backend else 1.0
+                source_mode = (
+                    getattr(self.backend, "deployment_mode", None)
+                    or getattr(self.backend, "backend_type", None)
+                    if self.backend
+                    else "libpcap"
+                )
                 flow = Flow(
                     flow_key=key,
                     start_time=pkt.timestamp,
@@ -620,6 +653,7 @@ class FlowExtractor:
                     protocol=pkt.protocol,
                     backend_type=backend_type,
                     feature_completeness=completeness,
+                    source_mode=source_mode,
                 )
                 self._flows[key] = flow
 
@@ -750,6 +784,7 @@ class FlowExtractor:
         completed: List[Flow] = []
         b_type = getattr(active_backend, "backend_type", "libpcap")
         b_comp = getattr(active_backend, "feature_completeness", 1.0)
+        b_mode = getattr(active_backend, "deployment_mode", None) or b_type
 
         with active_backend:
             for pkt in active_backend.stream_packets():
@@ -757,6 +792,7 @@ class FlowExtractor:
                 if expired is not None:
                     expired.backend_type = b_type
                     expired.feature_completeness = b_comp
+                    expired.source_mode = b_mode
                     completed.append(expired)
 
         # Flush remaining active flows at end of stream
@@ -764,7 +800,13 @@ class FlowExtractor:
         for f in flushed:
             f.backend_type = b_type
             f.feature_completeness = b_comp
+            f.source_mode = b_mode
             completed.append(f)
 
         return completed
+
+    def to_flow_features(self, flow: Flow) -> Dict[str, Any]:
+        """Convert a Flow into an outgoing FlowFeatures payload dictionary using active backend telemetry."""
+        return flow.to_flow_features(backend=self.backend)
+
 

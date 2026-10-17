@@ -337,3 +337,8 @@ class XDPFlowProbeLoader:
             "ring_buffer_drops": self._ring_buffer_drops,
             "drop_rate": drop_rate,
         }
+
+
+# Convenient alias for loader
+XdpFlowLoader = XDPFlowProbeLoader
+

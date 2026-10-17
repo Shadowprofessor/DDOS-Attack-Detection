@@ -1,11 +1,12 @@
 # Adversarial & Degraded Input Evaluation Report (Phase 5 Scope / Prompt 13)
 
 ## 1. Feature Completeness Downstream Consumption Audit
-- **Downstream Components Audited**:
-  - `src/models/ensemble.py` (`EnsembleClassifier`): Does not inspect `feature_completeness`; executes inference over the 77-dimensional vector regardless of whether backward features are zero-filled.
-  - `src/agent/nemotron_agent.py` (`NemotronThreatAgent`): Prompt context builder does not ingest or reason over `feature_completeness` when triaging alerts.
-  - `src/api/scoring_service.py` & `src/api/dashboard_ws.py`: Ingress WebSocket telemetry and REST scoring endpoints do not flag degraded-input flows or calibrate confidence based on `feature_completeness`.
-- **Finding**: `feature_completeness` is currently a **reported-but-unused metadata field** originating in `CaptureBackend` and stored in `Flow.feature_completeness`.
+- **Downstream Components Audited & Resolved**:
+  - `src/models/ensemble.py` (`EnsembleClassifier`): Now ingests `feature_completeness` and `source_mode`. Flags `degraded_confidence = True` for completeness < 1.0, and attaches source-specific `degradation_reason` for completeness <= 0.75 across all model combination pathways.
+  - `src/api/scoring_service.py` (`FlowFeatures` & `ScoringResult`): Exposes `feature_completeness` and `source_mode`, bridges incoming `Flow` provenance via `to_flow_features()`, and enqueues degraded telemetry to the real-time broadcaster.
+  - `src/agent/nemotron_agent.py` (`NemotronThreatAgent`): Ingests `feature_completeness` in `normalize_alert`, injects an explicit input degradation warning into alert prompt context, includes Rule 6 in system instructions, and enforces `[DEGRADED INPUT]` prefix while strictly suppressing `CRITICAL` escalation in heuristic fallback.
+  - `src/web/realtime_dashboard` (`broadcaster.py` & `app.js`): Preserves degradation telemetry in WebSocket event streaming, renders `⚠️ DEGRADED (XX%)` badges in the live flow feed, and displays amber degradation callouts in the operator pending actions table.
+- **Status**: **Fully Resolved**. `feature_completeness` is actively propagated and consumed across all inference, triage, and visualization layers.
 
 ---
 
@@ -37,3 +38,33 @@ For Prompt 13 (Adversarial Robustness & Input Degradation Testing):
 2. **Downstream Confidence Calibration**:
    - Evaluate introducing confidence dampening in `EnsembleClassifier` or flagging in `scoring_service.py` when `feature_completeness < 1.0`.
    - Add explicit prompt context in `NemotronThreatAgent` informing the LLM that the flow was captured in `host_ingress` mode with unobserved backward traffic.
+
+---
+
+## 4. Named Finding: Exploitation of Fixed Ingress Zero-Features (Evasion via Asymmetric Telemetry Blindspot)
+
+### Threat Model
+An attacker with operational knowledge of a target's `host_ingress` deployment (e.g., eBPF XDP hook attached exclusively to the ingress path without a companion TC egress hook or symmetric tap) specifically targets the static zero-invariance of the 23 backward features. Because backward traffic is physically unobserved at the host ingress NIC hook, the extractor deterministically forces:
+- `Bwd Packets/s = 0.0`
+- `Down/Up Ratio = 0.0`
+- `Total Backward Packets = 0`
+- `Bwd Packet Length Mean / Std / Max / Min = 0.0`
+- `Bwd IAT Total / Mean / Std / Max / Min = 0.0`
+
+### Empirical Evidence & Vulnerability Analysis
+In tree-based ensemble classifiers trained on bidirectional PCAP datasets (such as CICDDoS2019):
+- **XGBoost ranks `Bwd Packets/s` #2 overall** with **0.0867 (8.67%)** total gain across all split trees.
+- **XGBoost ranks `Down/Up Ratio` #12 overall** with **0.0155 (1.55%)** total gain.
+Combined, over **10.22%** of XGBoost's decision weight hinges on these two backward features alone. Forced zeros are not random Gaussian noise that ensemble averaging smooths out; they constitute a **fixed, mathematically predictable constraint** that an adversary can deliberately design attack vectors around. By modulating forward-only packet lengths and inter-arrival times to align with decision tree branches that require `Bwd Packets/s <= 0.0`, an adversary can steer inference towards Benign or low-confidence unclassified leaf nodes.
+
+### Phase 5 (Prompt 13) Test Case Specification
+To quantify and harden against this asymmetric evasion vector in Phase 5:
+- **Target Test Suite**: `tests/test_adversarial_evasion.py`
+- **Perturbation Methodology**:
+  1. Hold forward traffic characteristics realistic (valid TCP flags, plausible payload lengths, and consistent rate envelopes).
+  2. Synthetically exploit the guaranteed constraint `Bwd Packets/s = 0.0` and `Down/Up Ratio = 0.0` across 3 distinct attack families:
+     - **SYN Flood**: Asymmetric high-frequency forward SYN bursts with zero receiver ACKs.
+     - **UDP Reflection**: Ingress UDP bursts evaluated under single-direction capture.
+     - **HTTP / WebDDoS**: Slow request generation navigating tabular decision boundaries under forced zero backward volume.
+  3. **Metrics**: Measure exact misclassification rate, confidence delta, and verify that the downstream degradation guardrails (`degraded_confidence=True`, `[DEGRADED INPUT]` heuristic cap, and LLM input warning) correctly trigger to prevent operator blindsiding.
+
