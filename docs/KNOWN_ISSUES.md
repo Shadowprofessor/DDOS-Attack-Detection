@@ -70,6 +70,13 @@ Tracked issues found during the exploration report (2026-10-03).
 - **Resolution**: Set `device='cpu'` in `ModelRegistry.load()` for API inference. Empirical latency benchmarking proved CPU inference is strictly faster (p50: 0.92 ms CPU vs 4.82 ms GPU for single flows) because GPU host-to-device memory copy and kernel launch overheads exceed GPU computation speed for small inference batches.
 - **Rule for Future Code**: Any future real-time or async code path in this project must either use `device='cpu'` for inference or implement explicit CUDA context locking/serialization if GPU inference is strictly required in an async context.
 
+### 10. `feature_completeness` Downstream Consumption Gap & Host-Ingress XGBoost Sensitivity (Phase 5 / Prompt 13 Scope)
+- **Files:** `src/models/ensemble.py`, `src/agent/nemotron_agent.py`, `src/api/scoring_service.py`
+- **Issue:** While `feature_completeness` is rigorously tracked in Layer 1 `CaptureBackend` (`1.0` in TAP mode, `0.7013` in host-ingress eBPF, `0.2468` in cloud flow logs), it is currently a reported-but-unused metadata field that is not consumed by the ensemble scorer, LLM triage agent, or dashboard to flag degraded-input flows.
+- **Empirical Model Audit**: An audit of trained models reveals that in XGBoost (`models/cicddos2019_xgboost.pkl`), backward features carry **13.59%** total feature importance gain, with **`Bwd Packets/s`** ranking as the **#2 most important feature overall (8.67%)** and **`Down/Up Ratio`** ranking **#12 (1.55%)**. In contrast, Random Forest relies primarily on forward metrics (total backward weight 5.94%, no backward feature in top 15).
+- **Phase 5 Mandate (Prompt 13)**: Must evaluate ensemble precision, recall, and calibration specifically under `host_ingress` mode's 54-feature reality (where all 23 backward features are 0.0), measuring the exact performance delta from the 77-feature lab condition and assessing confidence dampening. Documented in `models/adversarial_report.md`.
+
+
 
 
 
