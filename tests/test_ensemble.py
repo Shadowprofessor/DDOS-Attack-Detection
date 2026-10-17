@@ -168,7 +168,7 @@ def test_rf_n_jobs_scoped_to_ensemble():
 
     # Instantiate ensemble
     ens = EnsembleClassifier()
-    assert ens.rf_classifier.model.n_jobs == 1
+    assert getattr(ens.rf_classifier.model, "n_jobs", None) == 1
 
     # Verify original instance's n_jobs attribute was not changed
     assert getattr(rf_independent.model, "n_jobs", None) == original_n_jobs

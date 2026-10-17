@@ -94,6 +94,7 @@ class EnsembleClassifier:
             from sklearn.dummy import DummyClassifier
             dummy_rf = DummyClassifier(strategy="constant", constant=0)
             dummy_rf.fit(np.zeros((len(self.classes), len(self.feature_names))), list(range(len(self.classes))))
+            dummy_rf.n_jobs = 1
             self.rf_classifier = DDoSClassifier({
                 "model": dummy_rf,
                 "classes": self.classes,
