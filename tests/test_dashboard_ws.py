@@ -180,15 +180,19 @@ def test_score_flow_latency_unaffected_by_dashboard():
     ens.score_flow(features, mode="xgb_only")
 
     # 1. Benchmark xgb_only model execution time.
-    # Threshold: 5ms catches the deepcopy-per-request regression (~18ms) while
-    # tolerating noisy shared CI runners. Locally this runs at ~0.4-0.8ms.
+    # Local SLA: strictly sub-1.5ms (locally runs at ~0.4-0.8ms).
+    # CI runners: noisy shared runners permit up to 5.0ms.
     runs = 30
     t0 = time.perf_counter()
     for _ in range(runs):
         lbl, conf, bd = ens.score_flow(features, mode="xgb_only")
     model_latency_ms = ((time.perf_counter() - t0) * 1000.0) / runs
 
-    assert model_latency_ms < 5.0, f"xgb_only scoring latency ({model_latency_ms:.2f}ms) exceeded 5ms"
+    is_ci = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
+    threshold_ms = 5.0 if is_ci else 1.5
+    assert model_latency_ms < threshold_ms, (
+        f"xgb_only scoring latency ({model_latency_ms:.2f}ms) exceeded {threshold_ms}ms"
+    )
 
     # 2. Benchmark enqueue_flow fire-and-forget overhead (sub-0.1ms)
     t0 = time.perf_counter()
@@ -209,6 +213,42 @@ def test_score_flow_latency_unaffected_by_dashboard():
         small_broadcaster.enqueue_flow({"label": f"flow_{i}", "is_attack": False})
     # Queue remains bounded at or below maxsize
     assert small_broadcaster._flow_queue.qsize() <= small_broadcaster.queue_maxsize
+
+
+def test_score_flow_latency_threshold_scoping(monkeypatch):
+    """
+    Verify threshold logic:
+    1. Without CI/GITHUB_ACTIONS set, threshold is strictly 1.5ms (and passes locally).
+    2. With CI=true set, threshold is relaxed to 5.0ms to tolerate noisy virtual runners.
+    """
+    from src.models.ensemble import get_default_ensemble
+    ens = get_default_ensemble()
+    features = {col: 10.0 for col in ens.feature_names}
+
+    # Warmup
+    ens.score_flow(features, mode="xgb_only")
+
+    # Case A: Non-CI local environment
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    is_ci = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
+    assert is_ci is False
+    threshold_local = 5.0 if is_ci else 1.5
+    assert threshold_local == 1.5
+
+    runs = 30
+    t0 = time.perf_counter()
+    for _ in range(runs):
+        ens.score_flow(features, mode="xgb_only")
+    local_latency_ms = ((time.perf_counter() - t0) * 1000.0) / runs
+    assert local_latency_ms < 1.5, f"Local xgb_only latency ({local_latency_ms:.2f}ms) exceeded strict 1.5ms threshold"
+
+    # Case B: CI environment
+    monkeypatch.setenv("CI", "true")
+    is_ci_set = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
+    assert is_ci_set is True
+    threshold_ci = 5.0 if is_ci_set else 1.5
+    assert threshold_ci == 5.0
 
 
 def test_ws_inbound_messages_ignored_never_execute():

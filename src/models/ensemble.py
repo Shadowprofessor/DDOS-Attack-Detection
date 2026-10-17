@@ -77,6 +77,14 @@ class EnsembleClassifier:
             except Exception:
                 pass
 
+        # Verify test/CI environment for dummy fallback allowance
+        is_test_env = bool(
+            os.environ.get("CI")
+            or os.environ.get("GITHUB_ACTIONS")
+            or os.environ.get("PYTEST_CURRENT_TEST")
+            or os.environ.get("DDOS_ALLOW_TEST_DUMMY")
+        )
+
         # Load RF model — explicitly scoped copy with n_jobs=1 for low-latency single flow serving
         rf_file = rf_path or os.path.join(DEFAULT_MODEL_DIR, "cicddos2019_rf.pkl")
         if os.path.isfile(rf_file):
@@ -89,7 +97,7 @@ class EnsembleClassifier:
                     self.rf_classifier.model.n_jobs = 1
             except Exception as e:
                 logger.warning("Could not set n_jobs=1 on scoped RF copy: %s", e)
-        else:
+        elif is_test_env:
             logger.info("RF model file not found at %s; initializing dummy fallback for testing/CI", rf_file)
             from sklearn.dummy import DummyClassifier
             dummy_rf = DummyClassifier(strategy="constant", constant=0)
@@ -100,6 +108,12 @@ class EnsembleClassifier:
                 "classes": self.classes,
                 "feature_names": self.feature_names,
             })
+        else:
+            raise FileNotFoundError(
+                f"Required model artifact not found at '{rf_file}'. "
+                "Dummy fallback is strictly forbidden in production and only allowed when CI, "
+                "PYTEST_CURRENT_TEST, or DDOS_ALLOW_TEST_DUMMY environment variables are set."
+            )
 
         # Load XGBoost model
         xgb_file = xgb_path or os.path.join(DEFAULT_MODEL_DIR, "cicddos2019_xgboost.pkl")
@@ -110,7 +124,7 @@ class EnsembleClassifier:
                     self.xgb_classifier.model.set_params(device="cpu", n_jobs=1)
             except Exception:
                 pass
-        else:
+        elif is_test_env:
             logger.info("XGBoost model file not found at %s; initializing dummy fallback for testing/CI", xgb_file)
             from sklearn.dummy import DummyClassifier
             dummy_xgb = DummyClassifier(strategy="constant", constant=0)
@@ -120,6 +134,12 @@ class EnsembleClassifier:
                 "classes": self.classes,
                 "feature_names": self.feature_names,
             })
+        else:
+            raise FileNotFoundError(
+                f"Required model artifact not found at '{xgb_file}'. "
+                "Dummy fallback is strictly forbidden in production and only allowed when CI, "
+                "PYTEST_CURRENT_TEST, or DDOS_ALLOW_TEST_DUMMY environment variables are set."
+            )
 
         # Sequence Classifier
         if seq_model is not None:

@@ -280,3 +280,29 @@ def test_app_py_reexport():
     from src.api.app import app as app_instance, score_flow as sf_endpoint
     assert app_instance is not None
     assert callable(sf_endpoint)
+
+
+def test_production_fails_loudly_when_models_missing(monkeypatch):
+    """
+    Verify production safety guard: EnsembleClassifier must raise FileNotFoundError
+    if model files are missing and no test/CI environment variables are set.
+    """
+    for env_var in ("CI", "GITHUB_ACTIONS", "PYTEST_CURRENT_TEST", "DDOS_ALLOW_TEST_DUMMY"):
+        monkeypatch.delenv(env_var, raising=False)
+
+    with pytest.raises(FileNotFoundError, match="Dummy fallback is strictly forbidden in production"):
+        EnsembleClassifier(rf_path="/nonexistent/path/rf.pkl", xgb_path="/nonexistent/path/xgb.pkl")
+
+
+def test_test_env_permits_dummy_fallback(monkeypatch):
+    """
+    Verify test/CI environment permits dummy fallback when explicit opt-in is provided.
+    """
+    monkeypatch.setenv("DDOS_ALLOW_TEST_DUMMY", "1")
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    ens = EnsembleClassifier(rf_path="/nonexistent/path/rf.pkl", xgb_path="/nonexistent/path/xgb.pkl")
+    assert ens.rf_classifier is not None
+    assert ens.xgb_classifier is not None

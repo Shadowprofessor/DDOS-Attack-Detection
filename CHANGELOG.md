@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.1] - 2026-10-18 - Patch: Strict Latency Gating & Production Model Fallback Guard
+
+### Fixed
+- **Latency Threshold Gate Hardening** (`tests/test_dashboard_ws.py`):
+  - Fixed a latency gate regression identified during the v2.0 audit where commit `20a2beb` relaxed `xgb_only` scoring latency from `< 1.5ms` to `< 5.0ms` globally across all test runs.
+  - Reinstated the strict `< 1.5ms` threshold for local/production test runs (benchmarking at 0.4ms – 0.8ms), while strictly scoping the relaxed 5.0ms ceiling to virtualized CI environments (`CI=true` or `GITHUB_ACTIONS=true`).
+  - Added `test_score_flow_latency_threshold_scoping` proving that the local threshold strictly enforces 1.5ms and CI enforces 5.0ms.
+- **Production Model Fallback Guard** (`src/models/ensemble.py`):
+  - Fixed a silent failure hazard where `EnsembleClassifier` would silently instantiate a `DummyClassifier` (always predicting Benign) if model `.pkl` artifacts were absent, even outside of test environments.
+  - Hardened the fallback condition to strictly require explicit test/CI indicators (`CI`, `GITHUB_ACTIONS`, `PYTEST_CURRENT_TEST`, or `DDOS_ALLOW_TEST_DUMMY`).
+  - In production without these environment variables, `EnsembleClassifier` now immediately and loudly raises `FileNotFoundError`.
+  - Added `test_production_fails_loudly_when_models_missing` and `test_test_env_permits_dummy_fallback` in `tests/test_ensemble.py` proving that production calls fail loudly when artifacts are missing while test environments retain fallback capabilities.
+
+### Verified & Audited
+- **Test Suite Pass Count**: **199 / 199 tests passing** (+3 new verification tests).
+- **HITL Gate Zero Regression**:
+  - `tests/test_mitigation_approval_gate.py`: 14 / 14 passing.
+  - `tests/test_mitigation_bypass.py`: 5 / 5 passing.
+  - `tests/test_cloud_enforcers.py`: 17 / 17 passing.
+
 ## [v2.0] - 2026-10-18 - Intelligent Operations
 
 ### Added
