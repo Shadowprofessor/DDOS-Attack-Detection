@@ -511,3 +511,167 @@ def test_prompt_template_formats_ensemble_breakdown_and_consensus(mock_post):
     assert "LSTM=Syn (0.70)" in sent_prompt
     assert "[synthetic windowing caveat]" in sent_prompt
 
+
+def test_degraded_confidence_blocks_critical_escalation():
+    """
+    Standalone named test proving that degraded confidence blocks CRITICAL escalation:
+    Construct an alert where unanimous model consensus and 0.95 raw confidence would normally
+    escalate to CRITICAL severity, but because feature_completeness < 1.0 (degraded_confidence=True)
+    from unobserved backward features (Bwd Packets/s = 0, Down/Up Ratio = 0), the severity is
+    strictly capped below CRITICAL (to HIGH), and [DEGRADED INPUT] is prepended to the explanation.
+    """
+    from src.agent.nemotron_agent import NemotronAgent, get_action
+
+    agent = NemotronAgent(api_key=None)  # Triggers deterministic heuristic fallback
+
+    breakdown = {
+        "random_forest": {"label": "Syn", "confidence": 0.96},
+        "xgboost": {"label": "Syn", "confidence": 0.95},
+        "sequence_classifier": {"label": "Syn", "confidence": 0.95, "active": True},
+    }
+
+    alert = {
+        "attacker_ip": "192.168.10.50",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.95,
+        "per_model_breakdown": breakdown,
+        "feature_completeness": 0.7013,
+        "degraded_confidence": True,
+        "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+    }
+
+    res = agent.analyze_and_propose(alert)
+
+    # Severity MUST NOT be CRITICAL — it must be capped below CRITICAL
+    assert res["severity"] == "HIGH", f"Expected severity HIGH (capped below CRITICAL), got {res['severity']}"
+    assert "[DEGRADED INPUT]" in res["explanation"]
+    assert res["degraded_confidence"] is True
+    assert res["feature_completeness"] == 0.7013
+    assert res["requires_human_approval"] is True
+
+    # Confirm the stored pending action reason in the manager also preserves [DEGRADED INPUT]
+    action = get_action(res["proposed_action_id"])
+    assert action is not None
+    assert "[DEGRADED INPUT]" in action["reason"]
+
+
+def test_forced_zero_backward_features_blocks_critical_severity_fallback():
+    """
+    Standalone test for hardest-condition degraded alert:
+    Constructs an alert where unanimous model consensus and extreme 0.98 raw confidence
+    would reach CRITICAL severity in the non-degraded baseline (tested explicitly).
+    When the alert is subjected to the forced-zero host_ingress blindspot (Bwd Packets/s = 0.0,
+    Down/Up Ratio = 0.0, 23 backward features zero-filled, feature_completeness = 0.7013,
+    degraded_confidence = True), the heuristic fallback strictly caps the severity below CRITICAL
+    to HIGH, and prepends [DEGRADED INPUT] to the explanation and proposed action reason.
+    """
+    from src.agent.nemotron_agent import NemotronAgent, get_action
+
+    agent = NemotronAgent(api_key=None)
+
+    # 1. Baseline: under full telemetry, 0.98 unanimous confidence reaches CRITICAL
+    baseline_alert = {
+        "attacker_ip": "192.168.10.77",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.98,
+        "per_model_breakdown": {
+            "random_forest": {"label": "Syn", "confidence": 0.98},
+            "xgboost": {"label": "Syn", "confidence": 0.98},
+            "sequence_classifier": {"label": "Syn", "confidence": 0.97, "active": True},
+        },
+        "feature_completeness": 1.0,
+        "degraded_confidence": False,
+    }
+    baseline_res = agent.analyze_and_propose(baseline_alert)
+    assert baseline_res["severity"] == "CRITICAL", (
+        f"Baseline should reach CRITICAL with 0.98 unanimous confidence, got {baseline_res['severity']}"
+    )
+
+    # 2. Hardest-condition case: same 0.98 confidence, but with host_ingress forced-zero pattern
+    degraded_alert = {
+        "attacker_ip": "192.168.10.77",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.98,
+        "per_model_breakdown": {
+            "random_forest": {"label": "Syn", "confidence": 0.98},
+            "xgboost": {"label": "Syn", "confidence": 0.98},
+            "sequence_classifier": {"label": "Syn", "confidence": 0.97, "active": True},
+        },
+        "feature_completeness": 0.7013,
+        "degraded_confidence": True,
+        "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+    }
+    degraded_res = agent.analyze_and_propose(degraded_alert)
+
+    # Assert severity is capped below CRITICAL to HIGH
+    assert degraded_res["severity"] == "HIGH", (
+        f"Expected severity HIGH (capped below CRITICAL), got {degraded_res['severity']}"
+    )
+    assert "[DEGRADED INPUT]" in degraded_res["explanation"]
+    assert degraded_res["degraded_confidence"] is True
+    assert degraded_res["feature_completeness"] == 0.7013
+    assert degraded_res["requires_human_approval"] is True
+
+    # Assert pending action store preserves [DEGRADED INPUT] in reason
+    action = get_action(degraded_res["proposed_action_id"])
+    assert action is not None
+    assert "[DEGRADED INPUT]" in action["reason"]
+
+
+@patch("requests.post")
+def test_prompt_formats_input_degradation_warning(mock_post):
+    """
+    Verify that when degraded_confidence is True, the prompt formatted for Nemotron LLM
+    explicitly includes the Input Degradation warning line with completeness and reason,
+    and system prompt contains Rule 6 regarding asymmetric input degradation.
+    """
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"explanation": "Degraded triage", "attack_type_guess": "Syn", "severity": "MEDIUM", "proposed_action": "Rate limit", "requires_human_approval": true}'
+                }
+            }
+        ]
+    }
+    mock_post.return_value = mock_resp
+
+    from src.agent.nemotron_agent import NemotronAgent
+
+    agent = NemotronAgent(api_key="mock-key")
+    alert = {
+        "attacker_ip": "192.168.1.99",
+        "victim_ip": "10.0.0.1",
+        "attack_type": "Syn",
+        "confidence": 0.92,
+        "per_model_breakdown": {
+            "random_forest": {"label": "Syn", "confidence": 0.91},
+            "xgboost": {"label": "Syn", "confidence": 0.93},
+        },
+        "feature_completeness": 0.7013,
+        "degraded_confidence": True,
+        "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+    }
+
+    res = agent.analyze_and_propose(alert)
+    assert res["requires_human_approval"] is True
+
+    assert mock_post.call_count == 1
+    call_args, call_kwargs = mock_post.call_args
+    sent_payload = json.loads(call_kwargs["data"])
+
+    # System instruction must include Rule 6
+    sys_prompt = sent_payload["messages"][0]["content"]
+    assert "6. INPUT DEGRADATION (feature_completeness < 1.0)" in sys_prompt
+
+    # User prompt must include the warning line
+    user_prompt = sent_payload["messages"][1]["content"]
+    assert "⚠️ Input Degradation: Feature completeness is 0.70 (host_ingress: 23 backward features unobserved and zero-filled)" in user_prompt
+    assert "Evaluate possibility of evasion or distorted asymmetric flood dynamics." in user_prompt
+
+

@@ -302,6 +302,8 @@
     const label = flow.label || (isAttack ? "Attack" : "Benign");
     const conf = flow.confidence !== undefined ? flow.confidence.toFixed(2) : "1.00";
     const consensus = flow.consensus_tier || "";
+    const degraded = Boolean(flow.degraded_confidence);
+    const compPct = Math.round((flow.feature_completeness !== undefined && flow.feature_completeness !== null ? flow.feature_completeness : 1.0) * 100);
 
     const item = document.createElement("div");
     item.className = `feed-item ${isAttack ? "attack" : "benign"}`;
@@ -309,6 +311,7 @@
       <div>
         <strong>${label}</strong>
         ${consensus ? `<span class="badge ${getConsensusBadgeClass(consensus)}" style="margin-left:6px">${consensus}</span>` : ""}
+        ${degraded ? `<span class="badge badge-degraded" style="margin-left:6px">⚠️ DEGRADED (${compPct}%)</span>` : ""}
       </div>
       <div>Conf: ${conf} | ${new Date().toLocaleTimeString()}</div>
     `;
@@ -349,6 +352,8 @@
       const consensusTier = action.consensus_tier || breakdown.mode || "PROPOSED";
       const consensusSummary = action.consensus_summary || action.reason || "";
       const caveat = action.caveat || (breakdown.sequence_classifier && breakdown.sequence_classifier.caveat) || "";
+      const isDegraded = Boolean(action.degraded_confidence || breakdown.degraded_confidence);
+      const degReason = action.degradation_reason || breakdown.degradation_reason || (action.reason && action.reason.includes("[DEGRADED INPUT]") ? action.reason : "");
 
       // Model chips
       const chips = [];
@@ -367,6 +372,7 @@
           <div><span class="badge ${getConsensusBadgeClass(consensusTier)}">${consensusTier}</span></div>
           ${chips.length > 0 ? `<div class="breakdown-chips">${chips.join("")}</div>` : ""}
           ${caveat ? `<div class="caveat-callout"><span>⚠️</span> <span>${caveat}</span></div>` : ""}
+          ${isDegraded && degReason ? `<div class="caveat-callout" style="border-color:rgba(245, 158, 11, 0.5); background:rgba(245, 158, 11, 0.15);"><span>⚠️</span> <span>${degReason}</span></div>` : ""}
         </div>
       `;
 

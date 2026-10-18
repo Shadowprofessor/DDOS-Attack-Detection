@@ -352,6 +352,8 @@ class EnsembleClassifier:
         features: Union[List[float], np.ndarray, Dict[str, float]],
         history_window: Optional[Union[np.ndarray, List[Any]]] = None,
         mode: str = "ensemble",
+        feature_completeness: Optional[float] = 1.0,
+        source_mode: Optional[str] = None,
     ) -> Tuple[str, float, Dict[str, Any]]:
         """Score a single flow through the calibrated ensemble or fallback mode.
 
@@ -360,6 +362,8 @@ class EnsembleClassifier:
             history_window: Optional sliding window of flow snapshots (shape (T, 77) or list).
                             If None or len <= 1, SequenceClassifier is excluded per Condition 3.
             mode: Scoring mode: 'ensemble' (default), 'rf_only', 'xgb_only', or 'rf_xgb'.
+            feature_completeness: Proportion of features populated by capture backend in [0.0, 1.0].
+            source_mode: Capture provenance mode (e.g. 'host_ingress', 'cloud_flow_log', 'tap', 'libpcap').
 
         Returns:
             Tuple of (label, confidence, per_model_breakdown):
@@ -367,6 +371,37 @@ class EnsembleClassifier:
               - confidence (float): Calibrated prediction confidence in [0.0, 1.0].
               - per_model_breakdown (dict): Model breakdowns, weights, and caveat.
         """
+        # Input degradation evaluation
+        degraded_confidence = False
+        degradation_reason = None
+        comp_val = None
+
+        if feature_completeness is not None:
+            comp_val = round(float(feature_completeness), 4)
+            if comp_val < 1.0:
+                degraded_confidence = True
+                # NOTE: The threshold gap between < 1.0 (which sets degraded_confidence = True)
+                # and <= 0.75 (which generates degradation_reason text) is intentional by design:
+                # minor degradation (e.g., 90% completeness) flags degraded confidence to alert
+                # downstream consumers, but detailed explanation strings are reserved for substantial
+                # degradation (<= 75%) where specific source-dependent blindspots are prominent.
+                if comp_val <= 0.75:
+                    if source_mode == "host_ingress":
+                        degradation_reason = "host_ingress: 23 backward features unobserved and zero-filled"
+                    elif source_mode == "cloud_flow_log":
+                        n_feat = int(round(comp_val * 77))
+                        degradation_reason = f"cloud flow log: limited field set, {n_feat}/77 features populated"
+                    else:
+                        mode_str = source_mode or "unknown"
+                        degradation_reason = f"reduced visibility: {comp_val * 100:.1f}% features populated"
+
+        def _attach_degradation(bd: Dict[str, Any]) -> Dict[str, Any]:
+            bd["degraded_confidence"] = degraded_confidence
+            bd["feature_completeness"] = comp_val if comp_val is not None else 1.0
+            bd["degradation_reason"] = degradation_reason
+            bd["source_mode"] = source_mode
+            return bd
+
         X = self._normalize_features(features)
 
         # 1. Fallback: RF-only
@@ -383,7 +418,7 @@ class EnsembleClassifier:
                     "caveat": PSEUDO_TEMPORAL_CAVEAT,
                 },
             }
-            return res["label"], res["confidence"], breakdown
+            return res["label"], res["confidence"], _attach_degradation(breakdown)
 
         # 2. Fallback: XGBoost-only
         if mode == "xgb_only":
@@ -399,7 +434,7 @@ class EnsembleClassifier:
                     "caveat": PSEUDO_TEMPORAL_CAVEAT,
                 },
             }
-            return res["label"], res["confidence"], breakdown
+            return res["label"], res["confidence"], _attach_degradation(breakdown)
 
         # Obtain base predictions
         rf_res = self.rf_classifier.predict_vector(X[0]) if self.rf_classifier else None
@@ -439,19 +474,19 @@ class EnsembleClassifier:
             if rf_res is None and xgb_res is None:
                 raise RuntimeError("Neither RF nor XGBoost model is available.")
             if rf_res is None:
-                return xgb_res["label"], xgb_res["confidence"], {
+                return xgb_res["label"], xgb_res["confidence"], _attach_degradation({
                     "xgboost": xgb_res,
                     "mode": "xgb_only",
                     "weights": {"xgboost": 1.0},
                     "sequence_classifier": seq_breakdown,
-                }
+                })
             if xgb_res is None:
-                return rf_res["label"], rf_res["confidence"], {
+                return rf_res["label"], rf_res["confidence"], _attach_degradation({
                     "random_forest": rf_res,
                     "mode": "rf_only",
                     "weights": {"random_forest": 1.0},
                     "sequence_classifier": seq_breakdown,
-                }
+                })
 
             # Vector of probabilities for meta-model
             p_rf_vec = np.array([rf_res["probabilities"].get(c, 0.0) for c in self.classes])
@@ -481,7 +516,7 @@ class EnsembleClassifier:
                 "mode": "rf_xgb" if mode == "rf_xgb" else "ensemble_tabular",
                 "stacking_used": stacking_used,
             }
-            return final_label, final_conf, breakdown
+            return final_label, final_conf, _attach_degradation(breakdown)
 
         # 4. Full 3-Model Ensemble (history_window present)
         p_rf_vec = np.array([rf_res["probabilities"].get(c, 0.0) for c in self.classes])
@@ -507,7 +542,7 @@ class EnsembleClassifier:
             "mode": "ensemble_full",
             "stacking_used": stacking_used,
         }
-        return final_label, final_conf, breakdown
+        return final_label, final_conf, _attach_degradation(breakdown)
 
 
 # Global singleton instance for module-level convenience API
@@ -526,8 +561,14 @@ def score_flow(
     features: Union[List[float], np.ndarray, Dict[str, float]],
     history_window: Optional[Union[np.ndarray, List[Any]]] = None,
     mode: str = "ensemble",
+    feature_completeness: Optional[float] = 1.0,
+    source_mode: Optional[str] = None,
 ) -> Tuple[str, float, Dict[str, Any]]:
     """Module-level single-flow scoring function using the default ensemble."""
     return get_default_ensemble().score_flow(
-        features=features, history_window=history_window, mode=mode
+        features=features,
+        history_window=history_window,
+        mode=mode,
+        feature_completeness=feature_completeness,
+        source_mode=source_mode,
     )
