@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - Phase 4: eBPF/XDP Line-Rate Ingress & Downstream Telemetry Wiring (2026-10-18)
+## [Unreleased] - Phase 4: eBPF/XDP Line-Rate Ingress & Downstream Telemetry Wiring + Phase 5: Deployment Packaging (2026-10-18)
 
 ### Added
 - **Layer 1 eBPF/XDP Flow Probe (`src/ebpf/xdp_flow_probe.c`, `src/ebpf/loader.py`)**:
@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `FlowExtractor` & Scoring API: Bridges capture backend provenance to `/score/flow`, persisting `feature_completeness`, `degraded_confidence`, and `degradation_reason` in `ScoringResult` and broadcasting via WebSocket.
   - `NemotronAgent`: Enforces Rule 6 in system instructions, formats warning banner in LLM prompts, and strictly caps heuristic fallback severity below `CRITICAL` (to `HIGH`) with `[DEGRADED INPUT]` prepended to analysis and pending action reasons.
   - SOC Real-Time Dashboard: Renders `⚠️ DEGRADED (XX%)` badges in live flow feed and amber warning callouts on pending mitigation cards.
+- **Deployment Packaging (`deploy/`)**:
+  - `deploy/docker-compose.yml`: Single-command container deployment (FastAPI scoring service, Ryu/OpenFlow controller, nginx reverse proxy) with all credentials as env-var references.
+  - `deploy/helm/`: Kubernetes Helm chart with configurable replicas, resource limits, and secret references.
+  - `deploy/systemd/`: Bare-metal unit files for single-host installation.
+  - `deploy/README.md`: Deployment guide covering all three packaging paths, including host_ingress/TAP feature-completeness caveat.
+  - `config/environments/`: Environment-specific YAML configs (`development.yaml`, `production.yaml`, `ci.yaml`) consumed by `config/loader.py`.
 
 ### Architectural Decisions & Known Limitations
 - **`tc clsact` Egress Filter Deferred Past v3.0**:
@@ -26,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Phase 4 Line-Rate Benchmark Gate Criterion Renamed**:
   - **Criterion Renamed**: From "40 Gbps verified" to **"line-rate capture path implemented and verified under mocked/synthetic load; physical throughput benchmark not executed."**
   - **Rationale**: Physical multi-10-Gbps validation requires dedicated bare-metal Linux servers with dual-port enterprise NICs (Mellanox ConnectX-5/6 `mlx5` or Intel E810 `ice`), PCIe Gen4 x16 slots, and external hardware packet generators (TRex/DPDK), which is not available in virtualized CI/dev environments prior to the Nov 15 deadline.
+- **Non-Lab Network Topology Dry Run Not Executed**:
+  - **Decision**: Documented as "NOT EXECUTED — ENVIRONMENT UNAVAILABLE" in `docs/non_lab_dry_run.md`; gap tracked in KNOWN_ISSUES.md §13.
+  - **Impact**: v3.0 is verified in lab/CI environments (local dev, Mininet/SDN simulation, synthetic/historical datasets, Docker Compose config validation). Cross-network deployment, real-traffic capture on production interfaces, and NAT/firewall traversal have not been exercised. This does not invalidate lab results but means the system carries a "lab-verified, not field-verified" qualification until the four-check dry run plan is executed on real non-lab infrastructure.
 
 ## [v2.0.1] - 2026-10-18 - Patch: Strict Latency Gating & Production Model Fallback Guard
 

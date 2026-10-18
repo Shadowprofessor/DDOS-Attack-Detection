@@ -97,6 +97,17 @@ Tracked issues found during the exploration report (2026-10-03).
 - **Hardware Availability**: Real physical 40 Gbps validation requires on-premises bare-metal Linux servers with dual-port enterprise NICs (Mellanox ConnectX-5/6 `mlx5` or Intel E810 `ice`), PCIe Gen4 x16 slots, and external hardware traffic generators (TRex/DPDK). This physical hardware is not available in the development/CI environment prior to the Nov 15 deadline.
 - **Verification Status**: Zero-copy BPF ring buffer, driver-level packet extraction, and graceful fallback to SKB mode are validated under mocked synthetic loads in CI (`test_line_rate_mocked_ci`). Manual execution procedure is documented in `docs/line_rate_benchmark.md`.
 
+### 13. Non-Lab Network Topology Dry Run Not Executed (v3.0 Verification Gap)
+- **Files:** `docs/non_lab_dry_run.md`
+- **Decision:** Documented as "NOT EXECUTED — ENVIRONMENT UNAVAILABLE"; gap tracked for post-v3.0 execution.
+- **Environment Assessment (2026-10-18)**:
+  - No cloud VPC account (AWS/GCP/Azure) reachable — no CLI tools or credentials present.
+  - No second physical network/host reachable — only university Wi-Fi (`172.19.22.132`), Ethernet adapters show APIPA (no link).
+  - Docker Desktop daemon inactive — `docker info` returns `failed to connect`.
+- **Impact**: All v3.0 verification (219 passing tests, 1 skipped) has been performed in lab/CI environments only (local development machine, Mininet/SDN simulation, synthetic/historical datasets, Docker Compose config validation). Cross-network deployment, real-traffic capture on production interfaces, and NAT/firewall traversal have not been exercised.
+- **Required for Closure**: Execute the four-check plan in `docs/non_lab_dry_run.md` on any non-lab host (cloud VM, VPS, or second physical machine) and record real output — not prose summaries.
+- **Consistency Note**: Same honesty standard as §11 (`tc clsact` deferral) and §12 (hardware line-rate benchmark rename).
+
 
 
 
