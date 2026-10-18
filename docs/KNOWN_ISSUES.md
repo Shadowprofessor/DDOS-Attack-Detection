@@ -70,11 +70,33 @@ Tracked issues found during the exploration report (2026-10-03).
 - **Resolution**: Set `device='cpu'` in `ModelRegistry.load()` for API inference. Empirical latency benchmarking proved CPU inference is strictly faster (p50: 0.92 ms CPU vs 4.82 ms GPU for single flows) because GPU host-to-device memory copy and kernel launch overheads exceed GPU computation speed for small inference batches.
 - **Rule for Future Code**: Any future real-time or async code path in this project must either use `device='cpu'` for inference or implement explicit CUDA context locking/serialization if GPU inference is strictly required in an async context.
 
-### 10. `feature_completeness` Downstream Consumption Gap & Host-Ingress XGBoost Sensitivity (Phase 5 / Prompt 13 Scope)
-- **Files:** `src/models/ensemble.py`, `src/agent/nemotron_agent.py`, `src/api/scoring_service.py`
-- **Issue:** While `feature_completeness` is rigorously tracked in Layer 1 `CaptureBackend` (`1.0` in TAP mode, `0.7013` in host-ingress eBPF, `0.2468` in cloud flow logs), it is currently a reported-but-unused metadata field that is not consumed by the ensemble scorer, LLM triage agent, or dashboard to flag degraded-input flows.
-- **Empirical Model Audit**: An audit of trained models reveals that in XGBoost (`models/cicddos2019_xgboost.pkl`), backward features carry **13.59%** total feature importance gain, with **`Bwd Packets/s`** ranking as the **#2 most important feature overall (8.67%)** and **`Down/Up Ratio`** ranking **#12 (1.55%)**. In contrast, Random Forest relies primarily on forward metrics (total backward weight 5.94%, no backward feature in top 15).
-- **Phase 5 Mandate (Prompt 13)**: Must evaluate ensemble precision, recall, and calibration specifically under `host_ingress` mode's 54-feature reality (where all 23 backward features are 0.0), measuring the exact performance delta from the 77-feature lab condition and assessing confidence dampening. Documented in `models/adversarial_report.md`.
+### 10. ✅ `feature_completeness` Downstream Consumption Gap & Host-Ingress XGBoost Sensitivity (Resolved in Prompt 10c)
+- **Files:** `src/models/ensemble.py`, `src/agent/nemotron_agent.py`, `src/api/scoring_service.py`, `src/web/realtime_dashboard/static/app.js`
+- **Resolution:** Downstream wiring completed in Prompt 10c across all layers:
+  - Ensemble flags `degraded_confidence = True` and attaches branched `degradation_reason` for `host_ingress` (`<= 0.75`).
+  - Scoring API returns `degraded_confidence` and forwards to WebSocket broadcaster.
+  - Nemotron agent formats Input Degradation warning banners in prompts, enforces Rule 6, and caps heuristic fallback severity below `CRITICAL` with `[DEGRADED INPUT]`.
+  - SOC dashboard displays amber warning callouts and `⚠️ DEGRADED (XX%)` badges.
+- **Empirical Model Audit**: An audit of trained models reveals that in XGBoost (`models/cicddos2019_xgboost.pkl`), backward features carry **13.59%** total feature importance gain, with **`Bwd Packets/s`** ranking as the **#2 most important feature overall (8.67%)** and **`Down/Up Ratio`** ranking **#12 (1.55%)**.
+- **Phase 5 Adversarial Scope**: Named finding documented in Section 4 of `models/adversarial_report.md` tracking exploitation of fixed ingress zero-features for Prompt 13 evaluation.
+
+### 11. `tc clsact` Egress Hook Deferred Past v3.0 (Host-Ingress Detection Quality Tradeoff)
+- **Files:** `src/ebpf/xdp_flow_probe.c`, `src/ebpf/loader.py`, `src/features/capture_backends/ebpf_backend.py`
+- **Decision:** Explicitly deferred past v3.0 (scheduled for v3.1 / Phase 6).
+- **Tradeoff Rationale**:
+  - `host_ingress` mode (the default deployment mode, requiring zero extra hardware) captures exclusively at the XDP driver RX layer. As a result, outbound host responses bypass XDP, capping real feature completeness at **0.7013 (54/77 features populated)** and forcing all 23 backward features (including XGBoost's #2 feature `Bwd Packets/s` at 8.67% gain and #12 `Down/Up Ratio` at 1.55% gain) to fixed zero values.
+  - Adding a `tc clsact` egress filter requires managing qdisc netlink attachments, synchronizing ingress/egress ring-buffer events across multiple CPU queues, and reconciling clock skew and out-of-order packet timing in userspace.
+  - With the Nov 15 release deadline (< 4 weeks away) and critical Phase 5 (adversarial robustness testing) and production deployment (Docker/Helm/systemd) ahead, attempting to squeeze in a kernel egress filter introduces unacceptable delivery and stability risk.
+- **Deployment Guidance**:
+  - `host_ingress` mode (default, no extra hardware) trades ~30% of backward-flow signal for zero deployment friction.
+  - `tap` mode (dedicated SPAN/TAP hardware mirror) achieves full 1.0 (77/77 feature) fidelity.
+
+### 12. Real Hardware Line-Rate Benchmark Status (Phase 4 Gate Renamed)
+- **Files:** `docs/line_rate_benchmark.md`, `tests/test_ebpf_probe.py`
+- **Decision:** Phase 4 gate criterion renamed from "40 Gbps verified" to **"line-rate capture path implemented and verified under mocked/synthetic load; physical throughput benchmark not executed."**
+- **Hardware Availability**: Real physical 40 Gbps validation requires on-premises bare-metal Linux servers with dual-port enterprise NICs (Mellanox ConnectX-5/6 `mlx5` or Intel E810 `ice`), PCIe Gen4 x16 slots, and external hardware traffic generators (TRex/DPDK). This physical hardware is not available in the development/CI environment prior to the Nov 15 deadline.
+- **Verification Status**: Zero-copy BPF ring buffer, driver-level packet extraction, and graceful fallback to SKB mode are validated under mocked synthetic loads in CI (`test_line_rate_mocked_ci`). Manual execution procedure is documented in `docs/line_rate_benchmark.md`.
+
 
 
 

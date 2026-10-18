@@ -528,9 +528,6 @@ def test_degraded_confidence_blocks_critical_escalation():
         "random_forest": {"label": "Syn", "confidence": 0.96},
         "xgboost": {"label": "Syn", "confidence": 0.95},
         "sequence_classifier": {"label": "Syn", "confidence": 0.95, "active": True},
-        "degraded_confidence": True,
-        "feature_completeness": 0.7013,
-        "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
     }
 
     alert = {
@@ -602,9 +599,6 @@ def test_forced_zero_backward_features_blocks_critical_severity_fallback():
             "random_forest": {"label": "Syn", "confidence": 0.98},
             "xgboost": {"label": "Syn", "confidence": 0.98},
             "sequence_classifier": {"label": "Syn", "confidence": 0.97, "active": True},
-            "degraded_confidence": True,
-            "feature_completeness": 0.7013,
-            "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
         },
         "feature_completeness": 0.7013,
         "degraded_confidence": True,

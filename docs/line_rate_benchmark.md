@@ -3,15 +3,17 @@
 ## 1. Overview
 The **Layer 1 eBPF/XDP flow probe** (`src/ebpf/xdp_flow_probe.c`) is designed to capture packet metadata at the earliest possible stage in the Linux networking subsystem: the network interface driver level before `sk_buff` allocation.
 
-### The 40 Gbps Target vs. Cloud VPC Limitations
-- **Bare-Metal / On-Premises (Native XDP)**:
+### Line-Rate Target vs. Cloud VPC Limitations & Hardware Gate Status
+- **Phase 4 Gate Status**: **Line-rate capture path implemented and verified under mocked/synthetic load; physical throughput benchmark not executed.**
+- **Real Hardware Requirements (Unexecuted)**:
+  - Real hardware validation at line-rate (up to 40 Gbps, ~59.52 Mpps for 64-byte packets) requires on-premises bare-metal servers equipped with dual-port enterprise NICs (Mellanox ConnectX-5/6 `mlx5` or Intel E810 `ice`), PCIe Gen4 x16 slots, and dedicated external traffic generators (e.g. TRex / DPDK). This hardware is not provisioned in the project's virtualized/CI development environment prior to the Nov 15 deadline.
+- **Bare-Metal / On-Premises (Native XDP Architectural Capability)**:
   - Executes directly in the NIC driver's receive ring buffer (`XDP_FLAGS_DRV_MODE`).
-  - Capable of sustaining up to **40 Gbps** line-rate ingress (59.52 Mpps for 64-byte packets) on enterprise NICs (e.g. Mellanox ConnectX-5/6 `mlx5`, Intel E810 `ice`).
   - Zero allocation overhead; metadata is extracted into a lockless BPF ring buffer, returning `XDP_PASS`.
 - **Cloud VPC Environments (Generic XDP)**:
   - Most public cloud virtualized NIC drivers (AWS ENA, GCP virtio-net, Azure MANA / Accelerated Networking) do **not** support native driver-level XDP.
   - When deployed in cloud VPCs, the loader automatically logs a warning and operates in **Generic (SKB-based) XDP mode** (`XDP_FLAGS_SKB_MODE`).
-  - Generic mode runs after the Linux kernel allocates the `sk_buff` structure. Throughput in generic mode performs **closer to libpcap** (~1 Gbps to 5 Gbps per core), **not** the 40 Gbps line-rate figure.
+  - Generic mode runs after the Linux kernel allocates the `sk_buff` structure. Throughput in generic mode performs **closer to libpcap** (~1 Gbps to 5 Gbps per core), **not** the line-rate figure.
   - **Operator Guidance**: Enterprise production deployments requiring line-rate multi-10-Gbps ingress must be provisioned on bare-metal hardware with native XDP driver support.
 
 ---
@@ -29,7 +31,10 @@ The benchmark harness tests:
 
 ---
 
-## 3. Running the Benchmark (Manual Phase 4 Gate)
+## 3. Running the Benchmark (Manual Hardware Verification Procedure)
+
+> [!NOTE]
+> This manual benchmark procedure is documented for operator deployments on qualified bare-metal hardware. In automated CI and lab development, the line-rate pipeline is verified via mocked BPF drivers (`test_line_rate_mocked_ci`). Physical hardware throughput benchmarking remains unexecuted.
 
 On an on-premise bare-metal Linux server with root privileges and a native XDP-supported NIC:
 

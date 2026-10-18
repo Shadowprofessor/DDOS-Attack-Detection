@@ -5,7 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Phase 4: eBPF/XDP Line-Rate Ingress & Downstream Telemetry Wiring (2026-10-18)
+
+### Added
+- **Layer 1 eBPF/XDP Flow Probe (`src/ebpf/xdp_flow_probe.c`, `src/ebpf/loader.py`)**:
+  - Driver-level XDP hook extracting 5-tuple, packet size, TCP flags/window, and nanosecond timestamps directly from NIC RX rings.
+  - Userspace `EbpfBackend` pushing events via lockless BPF ring buffer to the 77-feature extraction engine.
+  - Automatic fallback from native driver mode (`XDP_FLAGS_DRV_MODE`) to generic SKB mode (`XDP_FLAGS_SKB_MODE`) with explicit operator warning on unsupported virtualized/cloud NICs.
+- **End-to-End Downstream Feature Completeness Wiring**:
+  - `EnsembleClassifier`: Ingests `feature_completeness` and `source_mode`. Flags `degraded_confidence = True` for `comp < 1.0` and attaches branched `degradation_reason` for `host_ingress` (`<= 0.75`).
+  - `FlowExtractor` & Scoring API: Bridges capture backend provenance to `/score/flow`, persisting `feature_completeness`, `degraded_confidence`, and `degradation_reason` in `ScoringResult` and broadcasting via WebSocket.
+  - `NemotronAgent`: Enforces Rule 6 in system instructions, formats warning banner in LLM prompts, and strictly caps heuristic fallback severity below `CRITICAL` (to `HIGH`) with `[DEGRADED INPUT]` prepended to analysis and pending action reasons.
+  - SOC Real-Time Dashboard: Renders `⚠️ DEGRADED (XX%)` badges in live flow feed and amber warning callouts on pending mitigation cards.
+
+### Architectural Decisions & Known Limitations
+- **`tc clsact` Egress Filter Deferred Past v3.0**:
+  - **Decision**: Explicitly deferred to v3.1 / Phase 6.
+  - **Tradeoff**: `host_ingress` mode (default, zero extra hardware) captures exclusively on packet ingress at the XDP driver RX layer. As a result, outbound responses bypass XDP, capping real completeness at **0.7013 (54/77 features populated)** and forcing all 23 backward features (including XGBoost #2 feature `Bwd Packets/s` at 8.67% gain and #12 `Down/Up Ratio` at 1.55% gain) to fixed zero values.
+  - **Deployment Model**: `host_ingress` mode trades ~30% of backward-flow signal for zero deployment friction; `tap` mode (dedicated SPAN/TAP hardware mirror) achieves full 1.0 (77/77 feature) fidelity.
+- **Phase 4 Line-Rate Benchmark Gate Criterion Renamed**:
+  - **Criterion Renamed**: From "40 Gbps verified" to **"line-rate capture path implemented and verified under mocked/synthetic load; physical throughput benchmark not executed."**
+  - **Rationale**: Physical multi-10-Gbps validation requires dedicated bare-metal Linux servers with dual-port enterprise NICs (Mellanox ConnectX-5/6 `mlx5` or Intel E810 `ice`), PCIe Gen4 x16 slots, and external hardware packet generators (TRex/DPDK), which is not available in virtualized CI/dev environments prior to the Nov 15 deadline.
+
 ## [v2.0.1] - 2026-10-18 - Patch: Strict Latency Gating & Production Model Fallback Guard
+
 
 ### Fixed
 - **Latency Threshold Gate Hardening** (`tests/test_dashboard_ws.py`):
