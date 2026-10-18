@@ -1,0 +1,38 @@
+# DDoS Detection & Mitigation — Ryu OpenFlow Controller Containerfile
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+# Install minimal networking and debugging tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    net-tools \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir eventlet greenlet || true
+
+# Copy controller code, security suite, and models
+COPY Codes/ ./Codes/
+COPY src/ ./src/
+COPY models/ ./models/
+COPY config/ ./config/
+COPY run_ryu.py .
+
+# Create non-root user
+RUN useradd -m -u 10001 -s /bin/bash ddos \
+    && chown -R ddos:ddos /app
+
+USER ddos
+
+# Expose OpenFlow 1.3 port (6653) and REST management port (8080)
+EXPOSE 6653 8080
+
+ENTRYPOINT ["python", "run_ryu.py", "Codes/controller/enhanced_security_controller.py", "--ofp-tcp-listen-port", "6653"]

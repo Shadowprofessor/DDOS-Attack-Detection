@@ -1,0 +1,54 @@
+services:
+  scoring_service:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    container_name: ddos-scoring-service
+    environment:
+      - DDOS_ENV=${DDOS_ENV:-production}
+      - DDOS_MODEL_DIR=/app/models
+      - DDOS_API_KEYS=${DDOS_API_KEYS:-}
+      - DDOS_ADMIN_KEYS=${DDOS_ADMIN_KEYS:-}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+    ports:
+      - "${DDOS_SCORING_PORT:-8000}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  controller:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.controller
+    container_name: ddos-ryu-controller
+    environment:
+      - DDOS_ENV=${DDOS_ENV:-production}
+      - DDOS_SCORING_URL=http://scoring_service:8000
+      - DDOS_API_KEYS=${DDOS_API_KEYS:-}
+      - DDOS_ADMIN_KEYS=${DDOS_ADMIN_KEYS:-}
+    ports:
+      - "${OPENFLOW_PORT:-6653}:6653"
+      - "${RYU_REST_PORT:-8080}:8080"
+    depends_on:
+      scoring_service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  reverse_proxy:
+    image: nginx:1.27-alpine
+    container_name: ddos-reverse-proxy
+    ports:
+      - "${REVERSE_PROXY_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      scoring_service:
+        condition: service_healthy
+    restart: unless-stopped
