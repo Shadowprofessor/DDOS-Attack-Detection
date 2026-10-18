@@ -2,6 +2,19 @@
 # Environment: Development
 environment: development
 
+capture_backend:
+  type: "libpcap"
+  interface: "${CAPTURE_INTERFACE:-eth0}"
+
+models:
+  hierarchical:
+    model_dir: "${DDOS_MODEL_DIR:-models}"
+  ensemble:
+    rf_path: "${DDOS_RF_PATH:-models/cicddos2019_rf.pkl}"
+    xgb_path: "${DDOS_XGB_PATH:-models/cicddos2019_xgboost.pkl}"
+    sequence_classifier_path: "${DDOS_SEQ_PATH:-models/sequence_classifier_best.pt}"
+    ensemble_bundle_path: "${DDOS_ENSEMBLE_BUNDLE:-models/ensemble_weights.joblib}"
+
 scoring_service:
   host: "0.0.0.0"
   port: 8000
@@ -35,5 +48,7 @@ cloud_providers:
     account_id: "${CLOUDFLARE_ACCOUNT_ID:-}"
 
 llm:
+  endpoint: "${OPENROUTER_ENDPOINT:-https://openrouter.ai/api/v1/chat/completions}"
+  model: "${OPENROUTER_MODEL:-nvidia/nemotron-3-ultra-550b-a55b:free}"
   openrouter_api_key: "${OPENROUTER_API_KEY:-}"
   nvidia_api_key: "${NVIDIA_API_KEY:-}"

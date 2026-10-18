@@ -31,6 +31,8 @@ from src.api.scoring_service import (
     ADMIN_KEYS,
     _generated_dev_key,
     _generated_dev_admin_key,
+    config,
+    load_config,
 )
 
 __all__ = [
@@ -51,4 +53,6 @@ __all__ = [
     "ADMIN_KEYS",
     "_generated_dev_key",
     "_generated_dev_admin_key",
+    "config",
+    "load_config",
 ]

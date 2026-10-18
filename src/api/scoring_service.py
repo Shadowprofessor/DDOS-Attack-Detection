@@ -30,18 +30,26 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
-# Logging
+# Configuration from centralized environment config loader
 # ---------------------------------------------------------------------------
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+from src.config.loader import load_config, extract_env_flag
+
+# Load unified environment configuration via --env flag, DDOS_ENV, or 'lab' default
+config = load_config()
+
+# Configure logging level from config
+_log_level_name = config.get("scoring_service", {}).get("log_level", "info").upper()
+_log_level = getattr(logging, _log_level_name, logging.INFO)
+logging.basicConfig(level=_log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("ddos_scoring_api")
+logger.setLevel(_log_level)
 
-# ---------------------------------------------------------------------------
-# Configuration from environment
-# ---------------------------------------------------------------------------
-MODEL_DIR = os.environ.get("DDOS_MODEL_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "models"))
+MODEL_DIR = config.get("models", {}).get("hierarchical", {}).get(
+    "model_dir", os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+)
 
-# API keys: comma-separated list in env, or auto-generate one for dev
-_raw_keys = os.environ.get("DDOS_API_KEYS", "")
+# API keys: from config, or auto-generate one for dev
+_raw_keys = config.get("scoring_service", {}).get("auth", {}).get("api_keys", "") or ""
 API_KEYS: set[str] = {k.strip() for k in _raw_keys.split(",") if k.strip()}
 _generated_dev_key: Optional[str] = None
 if not API_KEYS:
@@ -49,7 +57,7 @@ if not API_KEYS:
     API_KEYS.add(_generated_dev_key)
 
 # Admin API keys: separate, privileged tier for mitigation approval/rejection
-_raw_admin_keys = os.environ.get("DDOS_ADMIN_KEYS", "")
+_raw_admin_keys = config.get("scoring_service", {}).get("auth", {}).get("admin_keys", "") or ""
 ADMIN_KEYS: set[str] = {k.strip() for k in _raw_admin_keys.split(",") if k.strip()}
 _generated_dev_admin_key: Optional[str] = None
 if not ADMIN_KEYS:
@@ -57,9 +65,10 @@ if not ADMIN_KEYS:
     ADMIN_KEYS.add(_generated_dev_admin_key)
 
 # Rate limiting config
-RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("DDOS_RATE_LIMIT_WINDOW", "60"))
-RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("DDOS_RATE_LIMIT_MAX", "120"))
-MAX_BATCH_SIZE = int(os.environ.get("DDOS_MAX_BATCH_SIZE", "1000"))
+_rate_cfg = config.get("scoring_service", {}).get("rate_limit", {})
+RATE_LIMIT_WINDOW_SECONDS = int(_rate_cfg.get("window_seconds", 60))
+RATE_LIMIT_MAX_REQUESTS = int(_rate_cfg.get("max_requests", 120))
+MAX_BATCH_SIZE = int(_rate_cfg.get("max_batch_size", 1000))
 
 # ---------------------------------------------------------------------------
 # Model loading (singleton, loaded once at startup)
