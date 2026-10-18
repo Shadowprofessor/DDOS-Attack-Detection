@@ -1,0 +1,39 @@
+# DDoS Attack Detection & Mitigation System
+# Environment: Development
+environment: development
+
+scoring_service:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: true
+  model_dir: "models"
+  log_level: "debug"
+  rate_limit:
+    window_seconds: 60
+    max_requests: 240
+    max_batch_size: 1000
+  auth:
+    api_keys: "${DDOS_API_KEYS:-}"
+    admin_keys: "${DDOS_ADMIN_KEYS:-}"
+
+controller:
+  host: "0.0.0.0"
+  openflow_port: 6653
+  rest_port: 8080
+  poll_interval: 5
+  log_level: "debug"
+
+reverse_proxy:
+  port: 80
+  client_max_body_size: "10M"
+  timeout_seconds: 60
+
+cloud_providers:
+  cloudflare:
+    api_token: "${CLOUDFLARE_API_TOKEN:-}"
+    account_id: "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+llm:
+  openrouter_api_key: "${OPENROUTER_API_KEY:-}"
+  nvidia_api_key: "${NVIDIA_API_KEY:-}"

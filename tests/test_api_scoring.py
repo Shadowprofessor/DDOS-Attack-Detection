@@ -155,3 +155,80 @@ def test_startup_schema_validation(monkeypatch):
     monkeypatch.setattr(scoring_module.joblib, "load", mock_load)
     with pytest.raises(ValueError, match="Feature count mismatch"):
         reg.load(scoring_module.MODEL_DIR)
+
+
+def test_upstream_wiring_ebpf_host_ingress_scoring_pipeline(client):
+    """
+    Confirm the upstream wiring fix: a flow extracted via EbpfBackend in host_ingress
+    mode and scored through the full pipeline produces ScoringResult.feature_completeness == 0.7013,
+    not the 1.0 default, and sets degraded_confidence=True with the host_ingress degradation reason.
+    """
+    from src.features.capture_backends.ebpf_backend import EbpfBackend
+    from src.features.flow_extractor import FlowExtractor, Packet
+    from src.ebpf.loader import MockBPFDriver, XdpFlowLoader
+
+    # 1. Setup mock driver and backend in host_ingress mode
+    driver = MockBPFDriver()
+    loader = XdpFlowLoader(interface="eth0", driver=driver)
+    backend = EbpfBackend(loader=loader, deployment_mode="host_ingress")
+
+    # In host_ingress mode, feature completeness is 54/77 = 0.7013
+    assert backend.feature_completeness == 0.7013
+    assert backend.deployment_mode == "host_ingress"
+
+    # 2. Extract flow through FlowExtractor
+    extractor = FlowExtractor(backend=backend)
+    pkt1 = Packet(
+        timestamp=1000.0,
+        src_ip="192.168.1.100",
+        dst_ip="10.0.0.1",
+        src_port=44556,
+        dst_port=80,
+        protocol=6,
+        payload_len=0,
+        header_len=40,
+        tcp_flags=0x02,  # SYN
+        tcp_window=64240,
+    )
+    pkt2 = Packet(
+        timestamp=1000.05,
+        src_ip="192.168.1.100",
+        dst_ip="10.0.0.1",
+        src_port=44556,
+        dst_port=80,
+        protocol=6,
+        payload_len=460,
+        header_len=40,
+        tcp_flags=0x18,  # PSH-ACK
+        tcp_window=64240,
+    )
+    extractor.process_packet(pkt1)
+    extractor.process_packet(pkt2)
+    flows = extractor.flush_all()
+    assert len(flows) == 1
+    flow = flows[0]
+
+    # Verify flow provenance inherits backend attributes
+    assert flow.feature_completeness == 0.7013
+    assert flow.source_mode == "host_ingress"
+
+    # 3. Generate outgoing FlowFeatures payload via upstream wiring helper
+    flow_features_dict = flow.to_flow_features(backend=backend)
+    assert flow_features_dict["feature_completeness"] == 0.7013
+    assert flow_features_dict["source_mode"] == "host_ingress"
+
+    # 4. Score through FastAPI POST /score/flow
+    res = client.post(
+        "/score/flow",
+        json=flow_features_dict,
+        headers={"X-API-Key": TEST_API_KEY},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    result = data["result"]
+
+    # 5. Assert feature_completeness is preserved as 0.7013, NOT defaulted to 1.0
+    assert result["feature_completeness"] == 0.7013
+    assert result["degraded_confidence"] is True
+    assert result["degradation_reason"] == "host_ingress: 23 backward features unobserved and zero-filled"
+

@@ -306,3 +306,56 @@ def test_test_env_permits_dummy_fallback(monkeypatch):
     ens = EnsembleClassifier(rf_path="/nonexistent/path/rf.pkl", xgb_path="/nonexistent/path/xgb.pkl")
     assert ens.rf_classifier is not None
     assert ens.xgb_classifier is not None
+
+
+def test_degraded_confidence_metadata_and_reasons():
+    """
+    Verify feature_completeness and source_mode handling:
+    1. host_ingress mode with completeness=0.7013 generates degraded_confidence=True
+       and host_ingress-specific reason text.
+    2. cloud_flow_log mode with completeness=0.2468 generates cloud_flow_log-specific reason.
+    3. minor degradation (e.g. 0.90) sets degraded_confidence=True but degradation_reason is None.
+    4. pristine input (1.0) sets degraded_confidence=False and degradation_reason=None.
+    """
+    ens = get_default_ensemble()
+    dummy_vec = [0.0] * 77
+
+    # 1. host_ingress mode (0.7013)
+    _, _, bkd_ingress = ens.score_flow(
+        dummy_vec,
+        feature_completeness=0.7013,
+        source_mode="host_ingress",
+    )
+    assert bkd_ingress["degraded_confidence"] is True
+    assert bkd_ingress["feature_completeness"] == 0.7013
+    assert bkd_ingress["degradation_reason"] == "host_ingress: 23 backward features unobserved and zero-filled"
+
+    # 2. cloud_flow_log mode (0.2468)
+    _, _, bkd_cloud = ens.score_flow(
+        dummy_vec,
+        feature_completeness=0.2468,
+        source_mode="cloud_flow_log",
+    )
+    assert bkd_cloud["degraded_confidence"] is True
+    assert bkd_cloud["feature_completeness"] == 0.2468
+    assert bkd_cloud["degradation_reason"] == "cloud flow log: limited field set, 19/77 features populated"
+    assert "host_ingress" not in bkd_cloud["degradation_reason"]
+
+    # 3. Minor degradation gap (< 1.0 but > 0.75)
+    _, _, bkd_minor = ens.score_flow(
+        dummy_vec,
+        feature_completeness=0.90,
+        source_mode="tap",
+    )
+    assert bkd_minor["degraded_confidence"] is True
+    assert bkd_minor["degradation_reason"] is None
+
+    # 4. Pristine 1.0
+    _, _, bkd_pristine = ens.score_flow(
+        dummy_vec,
+        feature_completeness=1.0,
+        source_mode="libpcap",
+    )
+    assert bkd_pristine["degraded_confidence"] is False
+    assert bkd_pristine["degradation_reason"] is None
+

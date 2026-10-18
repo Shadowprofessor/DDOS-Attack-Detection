@@ -357,3 +357,62 @@ def test_dashboard_html_and_static_assets_served():
     assert "sessionStorage" in js_resp.text
     # Condition 4: Confirm localStorage is NEVER used in frontend script
     assert "localStorage" not in js_resp.text
+
+
+def test_dashboard_ws_degraded_flow_payload():
+    """
+    Verify degraded flow telemetry preservation over WebSocket:
+    1. Enqueue flow with degraded_confidence=True, feature_completeness=0.7013,
+       and host_ingress degradation reason.
+    2. Broadcast message and assert payload preserves all three fields.
+    3. Assert frontend app.js contains degraded badge and reason callout rendering logic.
+    """
+    broadcaster = get_broadcaster()
+    client = TestClient(app)
+
+    flow_event = {
+        "label": "Syn",
+        "confidence": 0.88,
+        "is_attack": True,
+        "consensus_tier": "xgb_only",
+        "feature_completeness": 0.7013,
+        "degraded_confidence": True,
+        "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+        "per_model_breakdown": {
+            "xgboost": {"label": "Syn", "confidence": 0.88},
+            "degraded_confidence": True,
+            "feature_completeness": 0.7013,
+            "degradation_reason": "host_ingress: 23 backward features unobserved and zero-filled",
+        },
+    }
+
+    with client.websocket_connect("/ws/dashboard") as ws:
+        ws.send_text(json.dumps({"type": "auth", "key": "test-admin-key-456"}))
+        _ = ws.receive_text()  # auth_ok
+        _ = ws.receive_text()  # initial_state
+
+        msg = {
+            "type": "flow_scored",
+            "timestamp": time.time(),
+            "flow_rate": 10.0,
+            "total_flows": 1,
+            "total_attacks": 1,
+            "flow": flow_event,
+        }
+        import asyncio
+        asyncio.run(broadcaster.broadcast_message(msg))
+
+        received = json.loads(ws.receive_text())
+        assert received["type"] == "flow_scored"
+        flow_payload = received["flow"]
+        assert flow_payload["degraded_confidence"] is True
+        assert flow_payload["feature_completeness"] == 0.7013
+        assert flow_payload["degradation_reason"] == "host_ingress: 23 backward features unobserved and zero-filled"
+
+    # Verify frontend app.js includes degraded badge logic and action degradation_reason handling
+    js_resp = client.get("/dashboard/static/app.js")
+    assert js_resp.status_code == 200
+    assert "DEGRADED" in js_resp.text
+    assert "badge-degraded" in js_resp.text
+    assert "degradation_reason" in js_resp.text
+

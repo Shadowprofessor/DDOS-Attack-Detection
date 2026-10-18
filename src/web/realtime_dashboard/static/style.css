@@ -511,6 +511,12 @@ canvas#flowCanvas {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.badge-degraded {
+  background: rgba(245, 158, 11, 0.2);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
 .consensus-container {
   display: flex;
   flex-direction: column;

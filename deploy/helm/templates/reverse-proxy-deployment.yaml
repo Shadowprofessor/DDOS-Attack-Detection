@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ddos-defense.fullname" . }}-reverse-proxy
+  labels:
+    {{- include "ddos-defense.labels" . | nindent 4 }}
+    app.kubernetes.io/component: reverse-proxy
+spec:
+  replicas: {{ .Values.reverseProxy.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ddos-defense.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: reverse-proxy
+  template:
+    metadata:
+      labels:
+        {{- include "ddos-defense.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: reverse-proxy
+    spec:
+      containers:
+        - name: reverse-proxy
+          image: "{{ .Values.reverseProxy.image.repository }}:{{ .Values.reverseProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.reverseProxy.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+          resources:
+            {{- toYaml .Values.reverseProxy.resources | nindent 12 }}
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: {{ include "ddos-defense.fullname" . }}-nginx-config
