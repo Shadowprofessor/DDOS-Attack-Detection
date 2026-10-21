@@ -26,7 +26,6 @@ def generate_fragmented_malformed_flows(n: int = 50, seed: int = 101) -> List[Di
     Generate fragmented and malformed packet flows with illegal flags and boundary violations.
 
     Simulates evasion via protocol anomaly:
-      - Tiny fragments (8 to 16 bytes total packet length)
       - Header length exceeding total packet length (RFC violation)
       - Contradictory flag combinations (SYN+FIN=0x03, NULL=0x00, or ALL flags)
       - Zero or non-standard window sizes
@@ -412,7 +411,6 @@ def test_adversarial_fragmented_malformed_flows():
 
     # Generate the exact same adversarial flows from Prompt 13
     flows = generate_fragmented_malformed_flows(n=50, seed=101)
-
     caught = 0
     evaded = 0
     violation_types = {
