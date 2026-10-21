@@ -123,6 +123,10 @@ class PacketSanityFilter:
             "violations_by_type": {},
         }
 
+        # Fragment flood tracking (stateful): maps flow_key -> list of timestamps.
+        # Each test creates a fresh filter instance, so no bleed between tests.
+        self._frag_tracker: Dict[str, List[float]] = {}
+
     def check_packet(self, packet: Any) -> SanityResult:
         """
         Check a single packet for structural validity.
@@ -347,7 +351,18 @@ class PacketSanityFilter:
         return violations
 
     def _check_fragmentation(self, packet: Any) -> List[str]:
-        """Check for IP fragmentation anomalies."""
+        """Check for IP fragmentation anomalies.
+
+        Detection-only: violations populate SanityResult.violations list.
+        No mitigation calls (iptables, nftables, tc, Docker, OpenFlow).
+
+        Field mapping (documented per Prompt 14 plan):
+          ip_frag_offset  → packet.ip_frag_offset  (getattr, default None)
+          ip_flags_mf     → packet.ip_flags & 0x1   (getattr, default None)
+          total pkt len   → packet.header_len + packet.payload_len
+          flow key        → packet.flow_id  or  (src_ip, dst_ip, protocol)
+          timestamp       → packet.timestamp
+        """
         violations = []
 
         ip_flags = getattr(packet, "ip_flags", None)
@@ -356,6 +371,19 @@ class PacketSanityFilter:
         # MF (More Fragments) flag set
         if ip_flags is not None and (ip_flags & 0x1):  # MF bit
             violations.append("IP_MF_FLAG: More Fragments flag set")
+
+            # Condition B (Prompt 14): MF flag with tiny total packet length.
+            # RFC 791 §3.2 mandates all hosts accept datagrams of at least
+            # 576 bytes; fragments below this threshold indicate classic
+            # evasion techniques (teardrop, Bonk, nestea).
+            header_len = getattr(packet, "header_len", 0) or 0
+            payload_len = getattr(packet, "payload_len", 0) or 0
+            total_pkt_len = header_len + payload_len
+            if total_pkt_len < 576:
+                violations.append(
+                    f"TINY_MF_FRAGMENT: MF-flagged packet total length "
+                    f"{total_pkt_len} < 576 bytes (RFC 791 minimum reassembly buffer)"
+                )
 
         # Fragment offset non-zero (not first fragment)
         if ip_frag_offset is not None and ip_frag_offset > 0:
@@ -366,6 +394,47 @@ class PacketSanityFilter:
             payload_len = getattr(packet, "payload_len", 0)
             if 0 < payload_len < self.min_payload_bytes:
                 violations.append(f"TINY_FIRST_FRAGMENT: First fragment payload {payload_len} < {self.min_payload_bytes}")
+
+        # Condition C (Prompt 14): Fragment flood detection (stateful).
+        # Flags when >50 fragments with the same flow key arrive within a
+        # 1-second window.  Uses flow_id attr when available; falls back to
+        # composite key from (src_ip, dst_ip, protocol).  Skips tracking
+        # entirely if no key can be constructed — this matches the
+        # getattr-with-None silent-skip convention used throughout this
+        # filter, and directly addresses the ip_id population concern raised
+        # during plan review: we never build a tracker key from an attr that
+        # might be None-by-default.
+        has_mf = ip_flags is not None and (ip_flags & 0x1)
+        has_offset = ip_frag_offset is not None and ip_frag_offset > 0
+        if has_mf or has_offset:
+            flow_key = getattr(packet, "flow_id", None)
+            if flow_key is None:
+                src_ip = getattr(packet, "src_ip", None)
+                dst_ip = getattr(packet, "dst_ip", None)
+                protocol = getattr(packet, "protocol", None)
+                if src_ip is not None and dst_ip is not None and protocol is not None:
+                    flow_key = f"{src_ip}-{dst_ip}-{protocol}"
+
+            if flow_key is not None:
+                now = getattr(packet, "timestamp", None)
+                if now is not None:
+                    # Prune entries older than 1 second
+                    if flow_key in self._frag_tracker:
+                        self._frag_tracker[flow_key] = [
+                            t for t in self._frag_tracker[flow_key]
+                            if now - t <= 1.0
+                        ]
+                    else:
+                        self._frag_tracker[flow_key] = []
+
+                    self._frag_tracker[flow_key].append(now)
+
+                    if len(self._frag_tracker[flow_key]) > 50:
+                        violations.append(
+                            f"FRAGMENT_FLOOD: {len(self._frag_tracker[flow_key])} "
+                            f"fragments in 1s window for flow {flow_key} "
+                            f"(threshold: 50)"
+                        )
 
         return violations
 
@@ -447,12 +516,13 @@ class PacketSanityFilter:
         return dict(self._stats)
 
     def reset_stats(self):
-        """Reset statistics counters."""
+        """Reset statistics counters and fragment flood tracker."""
         self._stats = {
             "total_checked": 0,
             "flagged": 0,
             "violations_by_type": {},
         }
+        self._frag_tracker = {}
 
 
 def create_packet_from_features(features: Dict[str, float]) -> Any:
@@ -487,6 +557,23 @@ def create_packet_from_features(features: Dict[str, float]) -> Any:
                 self.tcp_flags |= _TCP_ACK
             if urg > 0:
                 self.tcp_flags |= _TCP_URG
+
+            # Map fragmentation fields from flow features (Prompt 14).
+            # Uses None default to match getattr-with-None silent-skip convention
+            # in _check_fragmentation() — if field is absent, the check is skipped
+            # rather than producing a false positive/negative.
+            ip_flags_val = f.get("ip_flags", None)
+            self.ip_flags = int(ip_flags_val) if ip_flags_val is not None else None
+
+            ip_frag_val = f.get("ip_frag_offset", None)
+            self.ip_frag_offset = int(ip_frag_val) if ip_frag_val is not None else None
+
+            # Identity fields for fragment flood tracking (Condition C).
+            # Optional; flood tracking silently skips if these are absent.
+            self.src_ip = f.get("src_ip", None)
+            self.dst_ip = f.get("dst_ip", None)
+            self.timestamp = f.get("timestamp", None)
+            self.flow_id = f.get("flow_id", None)
 
     return MockPacket(features)
 

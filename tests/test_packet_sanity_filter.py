@@ -26,6 +26,7 @@ def generate_fragmented_malformed_flows(n: int = 50, seed: int = 101) -> List[Di
     Generate fragmented and malformed packet flows with illegal flags and boundary violations.
 
     Simulates evasion via protocol anomaly:
+      - Tiny fragments (8 to 16 bytes total packet length)
       - Header length exceeding total packet length (RFC violation)
       - Contradictory flag combinations (SYN+FIN=0x03, NULL=0x00, or ALL flags)
       - Zero or non-standard window sizes
@@ -411,6 +412,7 @@ def test_adversarial_fragmented_malformed_flows():
 
     # Generate the exact same adversarial flows from Prompt 13
     flows = generate_fragmented_malformed_flows(n=50, seed=101)
+
     caught = 0
     evaded = 0
     violation_types = {
@@ -613,6 +615,208 @@ def test_filter_stats_tracking():
     assert stats["violations_by_type"][syn_fin_key] == 5
 
     print("✓ Statistics tracking works correctly")
+
+
+def generate_fragmentation_evasion_flows(n: int = 20, seed: int = 202) -> List[Dict[str, float]]:
+    """
+    Generate flows specifically designed to test IP fragmentation evasion detection:
+      - Non-first fragments with offset > 0 (Condition A -> IP_FRAGMENT)
+      - Tiny fragments with MF flag set and total length < 576 bytes (Condition B -> TINY_MF_FRAGMENT)
+      - Fragment floods (>50 fragments in a 1-second window) (Condition C -> FRAGMENT_FLOOD)
+      - Combined non-first tiny fragments with MF set (Condition A + B)
+    """
+    rng = random.Random(seed)
+    flows = []
+
+    # 1. Condition A: 5 flows with ip_frag_offset > 0, ip_flags = 0x0 (non-first fragment)
+    for i in range(5):
+        f = _create_zero_feature_dict()
+        f["Protocol"] = 6.0
+        f["Destination Port"] = 80.0
+        duration_sec = 1.0
+        f["Flow Duration"] = duration_sec * 1e6
+        fwd_pkts = 10.0
+        f["Total Fwd Packets"] = fwd_pkts
+        f["Total Backward Packets"] = 0.0
+
+        # Normal packet size >= 576 bytes so Condition B is not triggered
+        payload_len = 600.0
+        f["Fwd Packet Length Min"] = payload_len
+        f["Fwd Packet Length Max"] = payload_len
+        f["Fwd Packet Length Mean"] = payload_len
+        f["Fwd Packets Length Total"] = payload_len * fwd_pkts
+        f["Fwd Header Length"] = 40.0 * fwd_pkts
+
+        f["Flow Bytes/s"] = f["Fwd Packets Length Total"] / duration_sec
+        f["Flow Packets/s"] = fwd_pkts / duration_sec
+        f["Fwd Packets/s"] = fwd_pkts / duration_sec
+        f["Avg Packet Size"] = payload_len
+
+        # Fragmentation fields
+        f["ip_flags"] = 0.0
+        f["ip_frag_offset"] = float(1480 * (i + 1))
+        f["flow_id"] = f"frag-offset-flow-{i}"
+        f["src_ip"] = f"192.168.1.{10 + i}"
+        f["dst_ip"] = "10.0.0.1"
+        f["timestamp"] = 1000.0 + float(i)
+        flows.append(f)
+
+    # 2. Condition B: 5 flows with ip_flags = 0x1 (MF set) and total packet length < 576 bytes
+    for i in range(5):
+        f = _create_zero_feature_dict()
+        f["Protocol"] = 6.0
+        f["Destination Port"] = 443.0
+        duration_sec = 1.0
+        f["Flow Duration"] = duration_sec * 1e6
+        fwd_pkts = 10.0
+        f["Total Fwd Packets"] = fwd_pkts
+        f["Total Backward Packets"] = 0.0
+
+        # Tiny payload: total pkt len = 40 + 20 = 60 bytes (< 576 bytes RFC 791 limit)
+        payload_len = 20.0
+        f["Fwd Packet Length Min"] = payload_len
+        f["Fwd Packet Length Max"] = payload_len
+        f["Fwd Packet Length Mean"] = payload_len
+        f["Fwd Packets Length Total"] = payload_len * fwd_pkts
+        f["Fwd Header Length"] = 40.0 * fwd_pkts
+
+        f["Flow Bytes/s"] = f["Fwd Packets Length Total"] / duration_sec
+        f["Flow Packets/s"] = fwd_pkts / duration_sec
+        f["Fwd Packets/s"] = fwd_pkts / duration_sec
+        f["Avg Packet Size"] = payload_len
+
+        # Fragmentation fields
+        f["ip_flags"] = 1.0  # MF bit set
+        f["ip_frag_offset"] = 0.0
+        f["flow_id"] = f"tiny-mf-flow-{i}"
+        f["src_ip"] = f"192.168.2.{10 + i}"
+        f["dst_ip"] = "10.0.0.1"
+        f["timestamp"] = 2000.0 + float(i)
+        flows.append(f)
+
+    # 3. Condition C: 5 flows simulating fragment flood (>50 fragments in 1s window)
+    for i in range(5):
+        f = _create_zero_feature_dict()
+        f["Protocol"] = 6.0
+        f["Destination Port"] = 80.0
+        duration_sec = 0.5
+        f["Flow Duration"] = duration_sec * 1e6
+        fwd_pkts = 55.0
+        f["Total Fwd Packets"] = fwd_pkts
+        f["Total Backward Packets"] = 0.0
+
+        # Normal size >= 576 bytes so Condition B is not triggered
+        payload_len = 600.0
+        f["Fwd Packet Length Min"] = payload_len
+        f["Fwd Packet Length Max"] = payload_len
+        f["Fwd Packet Length Mean"] = payload_len
+        f["Fwd Packets Length Total"] = payload_len * fwd_pkts
+        f["Fwd Header Length"] = 40.0 * fwd_pkts
+
+        f["Flow Bytes/s"] = f["Fwd Packets Length Total"] / duration_sec
+        f["Flow Packets/s"] = fwd_pkts / duration_sec
+        f["Fwd Packets/s"] = fwd_pkts / duration_sec
+        f["Avg Packet Size"] = payload_len
+
+        # Fragmentation fields
+        f["ip_flags"] = 1.0  # MF bit set
+        f["ip_frag_offset"] = 0.0
+        f["flow_id"] = "frag-flood-shared-flow"
+        f["src_ip"] = "192.168.3.100"
+        f["dst_ip"] = "10.0.0.1"
+        f["timestamp"] = 3000.0 + float(i) * 0.05
+        f["is_flood"] = 1.0
+        flows.append(f)
+
+    # 4. Combined Condition A + B: 5 flows with both MF set and offset > 0, total len < 576 bytes
+    for i in range(5):
+        f = _create_zero_feature_dict()
+        f["Protocol"] = 6.0
+        f["Destination Port"] = 8080.0
+        duration_sec = 1.0
+        f["Flow Duration"] = duration_sec * 1e6
+        fwd_pkts = 10.0
+        f["Total Fwd Packets"] = fwd_pkts
+        f["Total Backward Packets"] = 0.0
+
+        payload_len = 30.0
+        f["Fwd Packet Length Min"] = payload_len
+        f["Fwd Packet Length Max"] = payload_len
+        f["Fwd Packet Length Mean"] = payload_len
+        f["Fwd Packets Length Total"] = payload_len * fwd_pkts
+        f["Fwd Header Length"] = 40.0 * fwd_pkts
+
+        f["Flow Bytes/s"] = f["Fwd Packets Length Total"] / duration_sec
+        f["Flow Packets/s"] = fwd_pkts / duration_sec
+        f["Fwd Packets/s"] = fwd_pkts / duration_sec
+        f["Avg Packet Size"] = payload_len
+
+        # Fragmentation fields
+        f["ip_flags"] = 1.0
+        f["ip_frag_offset"] = float(1480 * (i + 1))
+        f["flow_id"] = f"frag-combo-flow-{i}"
+        f["src_ip"] = f"192.168.4.{10 + i}"
+        f["dst_ip"] = "10.0.0.1"
+        f["timestamp"] = 4000.0 + float(i)
+        flows.append(f)
+
+    return flows[:n]
+
+
+def test_adversarial_fragmentation_evasion():
+    """
+    Test packet sanity filter on adversarial IP fragmentation evasion flows.
+    Validates detection across:
+      - IP_FRAGMENT (Condition A: offset > 0)
+      - TINY_MF_FRAGMENT (Condition B: MF set and total length < 576 bytes)
+      - FRAGMENT_FLOOD (Condition C: >50 fragments in 1-second window)
+    """
+    filter = PacketSanityFilter()
+    flows = generate_fragmentation_evasion_flows(n=20, seed=202)
+
+    caught = 0
+    evaded = 0
+    violation_types = {
+        "IP_FRAGMENT": 0,
+        "TINY_MF_FRAGMENT": 0,
+        "FRAGMENT_FLOOD": 0,
+    }
+
+    for flow in flows:
+        # For fragment flood flows, simulate arrival of 50 prior fragments within 1s window
+        if flow.get("is_flood") and flow["flow_id"] not in filter._frag_tracker:
+            filter._frag_tracker[flow["flow_id"]] = [
+                flow["timestamp"] - 0.01 * (50 - j) for j in range(50)
+            ]
+
+        mock_pkt = create_packet_from_features(flow)
+        result = filter.check_packet(mock_pkt)
+
+        if not result.is_valid:
+            caught += 1
+            for v in result.violations:
+                if v.startswith("IP_FRAGMENT"):
+                    violation_types["IP_FRAGMENT"] += 1
+                elif v.startswith("TINY_MF_FRAGMENT"):
+                    violation_types["TINY_MF_FRAGMENT"] += 1
+                elif v.startswith("FRAGMENT_FLOOD"):
+                    violation_types["FRAGMENT_FLOOD"] += 1
+        else:
+            evaded += 1
+
+    catch_rate = (caught / len(flows)) * 100
+
+    print("\n=== Adversarial Fragmentation Evasion Test ===")
+    print(f"Total flows tested: {len(flows)}")
+    print(f"Caught by sanity filter: {caught} ({catch_rate:.1f}%)")
+    print(f"Evaded sanity filter: {evaded} ({100 - catch_rate:.1f}%)")
+    print("Fragmentation violation breakdown:")
+    print(f"  IP_FRAGMENT: {violation_types['IP_FRAGMENT']}")
+    print(f"  TINY_MF_FRAGMENT: {violation_types['TINY_MF_FRAGMENT']}")
+    print(f"  FRAGMENT_FLOOD: {violation_types['FRAGMENT_FLOOD']}")
+
+    assert catch_rate >= 90.0, f"Catch rate {catch_rate:.1f}% below 90% threshold"
+    print(f"[PASS] Sanity filter catches {catch_rate:.1f}% of fragmentation evasion flows")
 
 
 if __name__ == "__main__":
