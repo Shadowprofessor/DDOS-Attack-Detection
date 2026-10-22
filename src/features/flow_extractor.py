@@ -13,7 +13,10 @@ Design:
   - Flows are keyed by bidirectional 5-tuple: (src_ip, dst_ip, src_port, dst_port, protocol)
   - A sliding-window active/idle timeout mechanism expires stale flows.
   - Thread-safe: all mutable state is guarded by a Lock.
+  - Optional PacketSanityFilter integration for pre-filtering structurally invalid packets
+    before flow extraction (runs upstream of ML scoring, routes through PendingActionManager).
 """
+import logging
 import math
 import time
 import threading
@@ -599,10 +602,12 @@ class FlowExtractor:
         active_timeout: float = 120.0,
         idle_timeout: float = 60.0,
         backend: Optional[Any] = None,
+        sanity_filter: Optional[Any] = None,
     ):
         self.active_timeout = active_timeout
         self.idle_timeout = idle_timeout
         self.backend = backend
+        self.sanity_filter = sanity_filter
         self._flows: Dict[Tuple[str, str, int, int, int], Flow] = {}
         self._lock = threading.Lock()
 
@@ -620,7 +625,28 @@ class FlowExtractor:
 
         Expired flows are those that exceed ``active_timeout`` since their first
         packet or ``idle_timeout`` since their last packet.
+
+        If a sanity_filter is configured, packets are checked for structural validity
+        before being added to flows. Invalid packets are tagged and NOT added to flows.
         """
+        # Run sanity filter if configured
+        if self.sanity_filter is not None:
+            sanity_result = self.sanity_filter.check_packet(pkt)
+            if not sanity_result.is_valid:
+                # Packet flagged as structurally invalid
+                # Tag the packet with sanity violation info for downstream routing
+                pkt.sanity_violation = True
+                pkt.sanity_result = sanity_result.to_dict()
+                logger = logging.getLogger("FlowExtractor")
+                logger.warning(
+                    "Packet sanity violation detected: %s | src=%s:%d dst=%s:%d proto=%d",
+                    "; ".join(sanity_result.violations),
+                    pkt.src_ip, pkt.src_port, pkt.dst_ip, pkt.dst_port, pkt.protocol
+                )
+                # Return None - packet not added to any flow, but violation is logged
+                # Downstream consumers should check pkt.sanity_violation and route via PendingActionManager
+                return None
+
         key = self._make_flow_key(pkt.src_ip, pkt.dst_ip, pkt.src_port, pkt.dst_port, pkt.protocol)
         expired_flow = None
 

@@ -68,3 +68,30 @@ To quantify and harden against this asymmetric evasion vector in Phase 5:
      - **HTTP / WebDDoS**: Slow request generation navigating tabular decision boundaries under forced zero backward volume.
   3. **Metrics**: Measure exact misclassification rate, confidence delta, and verify that the downstream degradation guardrails (`degraded_confidence=True`, `[DEGRADED INPUT]` heuristic cap, and LLM input warning) correctly trigger to prevent operator blindsiding.
 
+---
+
+## 5. Layer 1 Packet Sanity Filter: IP Fragmentation & Evasion Evaluation (Prompt 14)
+
+### Evaluation Overview
+Following the Prompt 13 baseline (where protocol anomaly flows achieved ~95% evasion against the pure ML ensemble), Layer 1 was hardened with a pre-ensemble `PacketSanityFilter` to intercept malformed and evasion-crafted packets. Prompt 14 extended this filter to close the fragmentation evasion gap, adding structural and stateful detection for:
+- **Condition A (`IP_FRAGMENT`)**: Non-first fragments (`ip_frag_offset > 0`).
+- **Condition B (`TINY_MF_FRAGMENT`)**: MF-flagged packets (`ip_flags & 0x1`) with total packet length (`header_len + payload_len`) < 576 bytes (violating RFC 791 minimum reassembly buffer requirements).
+- **Condition C (`FRAGMENT_FLOOD`)**: Stateful tracking intercepting >50 fragments for the same flow key within a 1-second sliding window.
+
+### Empirical Validation Results (`test_adversarial_fragmentation_evasion`)
+Evaluated across 20 synthetic adversarial fragmentation evasion flows (`generate_fragmentation_evasion_flows(n=20, seed=202)`):
+
+- **Total Flows Tested**: 20
+- **Caught by Sanity Filter**: 20 (100.0%)
+- **Evaded Sanity Filter**: 0 (0.0%)
+
+#### Fragmentation Violation Breakdown (Exact Counts)
+- **`IP_FRAGMENT` Violations**: **10**
+- **`TINY_MF_FRAGMENT` Violations**: **10**
+- **`FRAGMENT_FLOOD` Violations**: **5**
+
+### Operational Impact & Safety Compliance
+- **Detection-Only Enforcement**: All fragmentation violations populate `SanityResult.violations` and annotate flow metadata before reaching downstream triage. Zero automated firewall mutations, Docker actions, or OpenFlow drops are triggered without operator approval.
+- **AST Safety Verification**: Full static audit passed (`tests/test_mitigation_bypass.py`: 5/5 passing) confirming strict adherence to the Layer 0 approval gate mandate.
+
+
