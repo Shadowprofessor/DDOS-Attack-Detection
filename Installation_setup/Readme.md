@@ -1,63 +1,73 @@
-## Installation
-### SetupStep-1
-install [Virtual box](https://www.virtualbox.org/wiki/Downloads) or VM-ware workstation
+# Environment Setup & SDN Emulation Guide
 
-Step-2 
-install [Mininet-VM](https://github.com/mininet/mininet/releases/)
+This guide details the environment setup for running the SDN emulation, ML detection service, and SOC dashboard.
 
-Step-3
-install [Ubuntu](https://ubuntu.com/download/desktop) in virtual box
+---
 
-Step-4
-install [ryu-controller](https://ryu.readthedocs.io/en/latest/getting_started.html) in ubuntu vm
+## 1. Prerequisites
 
-Step-5
-Use git clone to install the code files
+### Local Python Environment (Detection, ML & Dashboard)
+- **OS**: Windows, macOS, or Linux
+- **Python**: 3.11+
+- **Package Manager**: `pip`
+
 ```bash
-git clone https://github.com/chiragbiradar/DDoS-Attack-Detection-and-Mitigation-using-Machine-Learning.git
+pip install -r requirements.txt
 ```
 
+---
 
-### Go to Ubuntu/ryu controller vm
+## 2. SDN Emulation Setup (Mininet + Ryu)
 
+Mininet requires Linux kernel network namespaces. You can run the emulation environment inside Ubuntu (native, WSL2, or a VirtualBox/VMware VM).
+
+### Step 1: Install Dependencies on Ubuntu
 ```bash
-#check your IP address
-ifcongif
-# it should be something 198.162.XX.XX copy it
-# change working directory to controller folder
-cd controller
-
-# switch on the ryu-controller
-ryu-manager controller.py
+sudo apt update
+sudo apt install -y openvswitch-switch mininet python3-pip
 ```
 
-
-### Go to Mininet-vm
-
+### Step 2: Clone the Repository
 ```bash
-# change working directory to mininet folder
-cd mininet
-
-# change controller ip address that you copied from ryu controller ip
-nano topology.py
-
-# run topology
-sudo python topology.py
+git clone https://github.com/Shadowprofessor/DDOS-Attack-Detection.git
+cd DDOS-Attack-Detection
 ```
 
-### hping commands 
+### Step 3: Run the Ryu SDN Controller
+Start the SDN controller with the machine learning detection and approval-gated mitigation app:
 ```bash
-# icmp flood
-hping3 -1 -V -d 120 -w 64 -p 80 --rand-source --flood
+ryu-manager Codes/controller/enhanced_security_controller.py
+```
 
-# syn flood
-hping3 -S -V -d 120 -w 64 -p 80 --rand-source --flood
+### Step 4: Launch the Mininet Topology
+In a separate terminal on the Linux environment:
+```bash
+sudo python3 Codes/mininet/topology.py
+```
 
-# udp flood
-hping3 -2 -V -d 120 -w 64 -p 80 --rand-source --flood
+---
 
+## 3. Synthetic Traffic Simulation (Isolated Sandbox)
 
-# You can try out the project using our vm too
-## [Link to download our Mininet VM and Ryu Controller](shorturl.at/szH58)
+> **Important**: Traffic generation commands must only be executed inside the isolated local Mininet sandbox directed at sandbox-internal target IPs. Never target public internet hosts.
 
+Inside the Mininet CLI (`mininet>`):
+```bash
+# ICMP ping echo test
+h1 ping -c 5 h2
 
+# High-rate synthetic flow generation across sandbox hosts
+h1 python3 -m scripts.traffic_generator --target 10.0.0.2 --rate 100
+```
+
+---
+
+## 4. Running the Real-Time Scoring API & Dashboard
+
+In your primary terminal:
+```bash
+# Run FastAPI scoring engine with WebSocket broadcaster
+uvicorn src.api.scoring_service:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Access the real-time SOC security dashboard at `http://localhost:8000`.
