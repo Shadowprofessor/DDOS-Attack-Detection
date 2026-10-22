@@ -1,11 +1,192 @@
-# Advanced Multi-Layer DDoS Attack Detection, Attacker Forensics & Intelligent Mitigation Platform
+# Advanced Multi-Layer DDoS Detection & Mitigation Platform
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: 243+ Passing](https://img.shields.io/badge/Tests-243%2B%20Passing-brightgreen.svg)](tests/)
+[![Tests: 243 Passing](https://img.shields.io/badge/Tests-243%20Passing-brightgreen.svg)](tests/)
 [![Security: Gated Mitigation](https://img.shields.io/badge/Security-Approval%20Gated-orange.svg)](src/mitigation/)
 
 An advanced, defense-in-depth Distributed Denial of Service (DDoS) detection, attacker forensics, and intelligent mitigation platform designed for Software-Defined Networks (SDN) and modern cloud edge infrastructures. All detection code is strictly defensive; attack-traffic generation is restricted to isolated local test harnesses targeting owned containers only. Mitigation actions require explicit human approval — no automatic execution.
+
+> ✅ **Verified**: 243 tests passing — 2026-10-22
+
+---
+
+## 📋 Version History
+
+| Version | Tag | Description | Status |
+|---------|-----|-------------|--------|
+| v1.0 | [v1.0](#) | Verified Detection Core | Released |
+| v2.0 | [v2.0](#) | Intelligent Operations | Released |
+| v3.0 | [v3.0](#) | Production Hardened | Upcoming — Nov 15 2026 |
+
+---
+
+## ⚡ 2-Minute Quickstart (Docker Compose)
+
+### Prerequisites
+- Docker 24+
+- Docker Compose v2+
+- 4 GB RAM
+
+### Steps
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Shadowprofessor/DDOS-Attack-Detection.git
+   cd DDOS-Attack-Detection
+   ```
+
+2. **Copy environment configuration**:
+   ```bash
+   cp config/environments/development.yaml .env.yaml   # edit API keys if needed
+   ```
+
+3. **Build and start all services**:
+   ```bash
+   docker-compose -f deploy/docker-compose.yml up --build
+   ```
+
+4. **Access the platform**:
+   - Open **http://localhost:8000** — SOC dashboard
+   - Open **http://localhost:8000/docs** — FastAPI OpenAPI spec
+
+### Health Check
+```bash
+docker-compose -f deploy/docker-compose.yml ps
+```
+All services should show "healthy".
+
+### Stopping
+```bash
+docker-compose -f deploy/docker-compose.yml down
+```
+
+---
+
+## ⚙️ Configuration Reference
+
+Per-environment configuration files live in [`config/environments/`](config/environments/):
+
+| File | Use Case |
+|------|----------|
+| `development.yaml` | Local Mininet/Docker sandbox (no live cloud credentials needed) |
+| `staging.yaml` | Pre-production / integration testing |
+| `production.yaml` | Bare-metal or cloud VPC production deployment |
+
+### Key Variable Groups
+
+| Group | Variables | Description |
+|-------|-----------|-------------|
+| **Scoring Service** | `scoring_service.host`, `scoring_service.port`, `scoring_service.model_dir` | FastAPI server binding and model artifact paths |
+| **API Credentials** | `llm.openrouter_api_key`, `llm.nvidia_api_key`, `cloud_providers.cloudflare.api_token` | LLM and cloud provider authentication (loaded from `${ENV_VAR}` references) |
+| **Controller** | `controller.host`, `controller.openflow_port`, `controller.poll_interval` | SDN controller binding and flow polling settings |
+| **Rate Limiting** | `scoring_service.rate_limit.window_seconds`, `max_requests`, `max_batch_size` | API rate limiting thresholds |
+| **Dashboard** | `scoring_service.host`, `scoring_service.port` | Dashboard host and port binding |
+| **Cloud Providers** | `cloud_providers.cloudflare.api_token`, `cloud_providers.cloudflare.account_id` | Cloud scrubbing service configuration |
+
+> ⚠️ **Never commit literal API keys.** All secrets must be references to environment variables (e.g., `${OPENROUTER_API_KEY:-}`) or loaded from a local `.env` file excluded from version control.
+
+---
+
+## 📖 Operator Guide
+
+### 6a. SOC Dashboard
+
+**Opening the dashboard**: Navigate to `http://localhost:8000` after starting the scoring service.
+
+**What the live feed shows**:
+- Incoming alerts with real-time threat classification
+- Threat score (0–100) per detected flow
+- Attack class (SYN Flood, UDP Flood, DNS Amplification, etc.)
+- Attacker IP with GeoIP traceback (country, city, ISP, ASN)
+- `feature_completeness` flag indicating telemetry quality
+- LLM reasoning summary from the Nemotron agent (when available)
+
+**Approving a pending mitigation action**:
+1. Identify the pending action in the dashboard's mitigation queue
+2. Click the **Approve** button next to the action
+3. The action is confirmed to `PendingActionManager` → the appropriate enforcer executes the approved rule
+
+**Rejecting a pending action**:
+- Click **Reject** → action is discarded and logged to the incident report for audit trail
+
+**What `[DEGRADED INPUT]` means**:
+This flag appears when the system is operating with asymmetric or incomplete telemetry — for example, when using a single-interface eBPF ingress tap where backward-looking flow features (23 of 77 CICFlowMeter features) are unobserved. Detection still operates, but confidence scores are dampened and alerts are tagged accordingly.
+
+### 6b. CLI Approval Workflow
+
+```bash
+# List all pending mitigation actions
+python -m src.mitigation.cli list-pending
+
+# Approve a specific action by ID
+python -m src.mitigation.cli approve <action_id>
+
+# Reject a specific action by ID
+python -m src.mitigation.cli reject <action_id>
+
+# Bulk-approve all pending (use with caution)
+python -m src.mitigation.cli approve-all
+```
+
+---
+
+## 🛡️ Security Model
+
+This section explains the platform's security guarantees in plain language — written for security managers and auditors, not just developers.
+
+### 7a. Human-in-the-Loop Guarantee
+
+No IP is blocked, no firewall rule is installed, and no container is isolated without a human operator explicitly approving the action. The AI detects and recommends — it never acts autonomously.
+
+- **PendingActionManager**: Every proposed mitigation action (block an IP, install a firewall rule, isolate a container) is first written to a pending action queue. Nothing executes until a human reviews and approves it.
+- **`auto_execute=False`**: Every mitigation action is created with automatic execution disabled by default. There is no code path that sets this to `True` without a human operator explicitly changing it.
+
+### 7b. What the AI Does vs. What Humans Decide
+
+**The AI does:**
+- Traffic analysis and flow feature extraction
+- Attack classification (13-class taxonomy)
+- Threat scoring (0–100 severity scale)
+- LLM-based reasoning and incident correlation (Nemotron 3 Ultra)
+- Mitigation recommendation (what action to take and why)
+
+**Humans decide:**
+- Whether to execute any blocking, rate-limiting, or isolation action
+- Whether to approve, reject, or defer each proposed mitigation
+- When to escalate to cloud scrubbing services (Cloudflare, AWS Shield)
+
+### 7c. AST-Verified No-Bypass Guarantee
+
+The codebase includes a static code audit (`tests/test_mitigation_bypass.py`) that automatically fails if any code path is found that calls `_execute_action` outside of the human approval gate. This test runs on every commit. It uses Python's Abstract Syntax Tree (AST) parser to scan all source files — meaning it catches bypass attempts at the code structure level, not just through runtime testing.
+
+### 7d. Defense-Only Policy
+
+Attack traffic generation is restricted to isolated local Mininet/Docker sandboxes targeting sandbox-internal IPs only. No code in this repository can send attack traffic to public internet hosts. All traffic generation scripts in the test harness are pointed exclusively at container-internal addresses (e.g., `10.0.0.x` inside Mininet).
+
+### 7e. Secret Handling
+
+All API tokens (OpenRouter, NVIDIA NIM, Cloudflare) are loaded from environment variables only. No secrets appear in source code or committed configuration files. The `config/environments/*.yaml` files use `${ENV_VAR:-}` syntax to reference secrets without embedding them.
+
+---
+
+## ☁️ Cloudflare Connector: Mocked-Only in This Build
+
+The Cloudflare enforcer (`src/mitigation/cloud_enforcers/cloudflare.py`) is **MOCKED in this build**. It logs proposed IP block rules to the incident log and `pending_actions.json` but does **NOT** make live API calls to Cloudflare.
+
+### What Would Be Required to Go Live
+
+1. An active Cloudflare account with **Magic Transit** or **Spectrum** enabled (Magic Transit requires a minimum /24 prefix and enterprise contract)
+2. A valid `CLOUDFLARE_API_TOKEN` with **Zone:Edit** and **Firewall:Edit** permissions set in your `.env` file
+3. Your protected IP prefix registered in Cloudflare's Magic Transit dashboard
+4. Change `CLOUDFLARE_MOCK_MODE=false` in your `production.yaml` configuration
+5. Run the integration test:
+   ```bash
+   python -m pytest tests/test_cloudflare_enforcer.py -k live --cf-token $CLOUDFLARE_API_TOKEN
+   ```
+   to verify connectivity
+
+> ⚠️ **Do not enable live mode** without first verifying with your Cloudflare account representative that Magic Transit is provisioned for your prefix.
 
 ---
 
@@ -99,64 +280,6 @@ The platform operates across four coordinated layers, forming a defense-in-depth
 
 ---
 
-## 🚀 Quickstart
-
-### Prerequisites
-- Python 3.11+
-- Virtual environment tool (`venv` or `conda`)
-- (Optional for SDN Emulation) Ubuntu Linux with Mininet & Ryu installed
-
-### Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Shadowprofessor/DDOS-Attack-Detection.git
-   cd DDOS-Attack-Detection
-   ```
-
-2. **Create and activate a virtual environment**:
-   ```bash
-   python -m venv venv
-   # On Windows:
-   .\venv\Scripts\activate
-   # On Linux / macOS:
-   source venv/bin/activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
----
-
-## 🛠️ Usage
-
-### 1. Launching the Real-Time Scoring Service & SOC Dashboard
-Start the FastAPI server:
-```bash
-uvicorn src.api.scoring_service:app --host 0.0.0.0 --port 8000 --reload
-```
-Navigate to `http://localhost:8000` to open the SOC Command Dashboard.
-
-### 2. Evaluating Model Ensembles on Live / Synthetic Flows
-Test flow batches against the ML ensemble:
-```bash
-python run_full_simulation.py
-```
-
-### 3. Running Mininet & Ryu SDN Emulation (Linux)
-On an Ubuntu environment with Mininet:
-```bash
-# Terminal 1: Start the controller
-ryu-manager Codes/controller/enhanced_security_controller.py
-
-# Terminal 2: Launch the Mininet network topology
-sudo python3 Codes/mininet/topology.py
-```
-
----
-
 ## 🧪 Testing & Validation
 
 The codebase includes an extensive automated test suite covering unit tests, integration paths, adversarial robustness checks, and AST security audits:
@@ -200,6 +323,8 @@ DDOS-Attack-Detection/
 ├── tests/                  # Pytest automated test suite (243+ tests)
 ├── models/                 # Model artifacts & adversarial evaluation reports
 ├── Codes/                  # SDN Controller & Mininet emulation scripts
+├── config/                 # Per-environment configuration (development, staging, production)
+├── deploy/                 # Docker Compose, Helm chart, systemd service files
 ├── docs/                   # System architecture, datasets, and runbooks
 ├── requirements.txt        # Python dependencies
 ├── README.md               # Main project documentation
