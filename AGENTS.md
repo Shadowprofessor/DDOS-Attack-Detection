@@ -41,13 +41,13 @@ The Cloudflare enforcer (`src/mitigation/cloud_enforcers/cloudflare.py`) is
 make live API calls. See README.md Section 8 for activation requirements.
 
 ### 13-Class Canonical Attack Taxonomy (locked in Prompt 4b)
+The canonical 13-class taxonomy is locked to the CICDDoS2019 dataset classes used by all models, evaluation metrics, and confusion matrices:
+
 ```
-BENIGN, SYN_FLOOD, UDP_FLOOD, ICMP_FLOOD, HTTP_FLOOD, SLOWLORIS,
-DNS_AMPLIFICATION, NTP_AMPLIFICATION, SSDP_AMPLIFICATION, LAND_ATTACK,
-XMAS_SCAN, NULL_SCAN, FRAGMENT_FLOOD
+Benign, DNS, LDAP, MSSQL, NTP, NetBIOS, Portmap, SNMP, Syn, TFTP, UDP, UDP-Lag, WebDDoS
 ```
-All models, evaluation metrics, and confusion matrices use this taxonomy.
-Do not add, remove, or rename classes without explicit sign-off.
+
+Do not add, remove, or rename classes without explicit sign-off. Any taxonomy changes must cascade across all model bundles, evaluation reports, and the Nemotron agent prompt templates.
 
 ---
 
@@ -125,7 +125,7 @@ docs/
   eval/          # Confusion matrices, precision/recall/F1 per class
 
 ## Testing mandate
-- Full suite: currently 243 tests (on main), all passing
+- Full suite: currently 250 tests (on main), all passing
 - `test_mitigation_bypass.py` must be re-run after every new enforcer module
 - Per-dataset precision/recall must be reported separately for each dataset
   (CICDDoS2019, CICIoT2023, CAIDA) — not averaged together

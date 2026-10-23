@@ -2,12 +2,12 @@
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: 243 Passing](https://img.shields.io/badge/Tests-243%20Passing-brightgreen.svg)](tests/)
+[![Tests: 250 Passing](https://img.shields.io/badge/Tests-250%20Passing-brightgreen.svg)](tests/)
 [![Security: Gated Mitigation](https://img.shields.io/badge/Security-Approval%20Gated-orange.svg)](src/mitigation/)
 
 An advanced, defense-in-depth Distributed Denial of Service (DDoS) detection, attacker forensics, and intelligent mitigation platform designed for Software-Defined Networks (SDN) and modern cloud edge infrastructures. All detection code is strictly defensive; attack-traffic generation is restricted to isolated local test harnesses targeting owned containers only. Mitigation actions require explicit human approval — no automatic execution.
 
-> ✅ **Verified**: 243 tests passing — 2026-10-22
+> ✅ **Verified**: 250 tests passing — 2026-10-23
 
 ---
 
@@ -285,7 +285,7 @@ The platform operates across four coordinated layers, forming a defense-in-depth
 The codebase includes an extensive automated test suite covering unit tests, integration paths, adversarial robustness checks, and AST security audits:
 
 ```bash
-# Run the complete test suite (243+ tests)
+# Run the complete test suite (250+ tests)
 python -m pytest tests/ -q
 
 # Run structural packet sanity filter tests
@@ -320,7 +320,7 @@ DDOS-Attack-Detection/
 │   ├── mitigation/         # Layer 0 approval gate & pluggable enforcers
 │   ├── api/                # FastAPI scoring service & WebSocket feeds
 │   └── web/                # Real-time SOC dashboard interface
-├── tests/                  # Pytest automated test suite (243+ tests)
+├── tests/                  # Pytest automated test suite (250+ tests)
 ├── models/                 # Model artifacts & adversarial evaluation reports
 ├── Codes/                  # SDN Controller & Mininet emulation scripts
 ├── config/                 # Per-environment configuration (development, staging, production)
@@ -346,7 +346,7 @@ This project originated from [chiragbiradar/DDoS-Attack-Detection-and-Mitigation
 - Adversarially-hardened packet sanity filtering with fragmentation evasion detection (Layer 1)
 - An LLM-based threat triage agent using NVIDIA Nemotron (Layer 3)
 - A real-time FastAPI/WebSocket SOC dashboard
-- A 243-test automated verification suite with AST-based security auditing
+- A 250-test automated verification suite with AST-based security auditing
 
 ---
 
