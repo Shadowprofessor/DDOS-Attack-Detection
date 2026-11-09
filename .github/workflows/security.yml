@@ -15,6 +15,9 @@ jobs:
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks-action v2 reads PR commits on pull_request events
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +25,7 @@ jobs:
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # required by v2 to scan pull requests
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   bandit:
