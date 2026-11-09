@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] — 2026-11-09
+
+### Fixed
+- CI: the live NVIDIA NIM test (`tests/test_nvidia_nim_live.py`) now **skips** when
+  `NVIDIA_API_KEY` is unset (instead of `sys.exit(1)`), so the suite passes on fresh
+  clones / CI without a key.
+
 ## [4.0.0] — 2026-11-09
 
 First release of the single-author, clean-history detection core. Numbered v4.0.0 to
@@ -35,4 +42,5 @@ supersede the prior public tags (which reached v3.1).
 - Reported detection numbers are **CIC-DDoS2019 same-dataset** (separate extraction);
   cross-dataset generalization (CIC-IDS2017 / UNSW-NB15) is planned for v5.0.0 (M6).
 
+[4.0.1]: https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases/tag/v4.0.1
 [4.0.0]: https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases/tag/v4.0.0

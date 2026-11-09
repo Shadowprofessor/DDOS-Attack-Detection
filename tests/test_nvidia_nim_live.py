@@ -98,7 +98,11 @@ def main():
 
 
 def test_nvidia_nim_live_call():
-    """Pytest test case for live NVIDIA NIM call."""
+    """Pytest test case for the live NVIDIA NIM call.
+    Skips when NVIDIA_API_KEY is absent (e.g. CI) — this is a real-network test."""
+    import pytest
+    if not os.environ.get("NVIDIA_API_KEY"):
+        pytest.skip("NVIDIA_API_KEY not set — live NIM call skipped (set the key to run it)")
     main()
 
 
