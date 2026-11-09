@@ -1,0 +1,44 @@
+{
+  "Benign": {
+    "threshold": 0.742,
+    "validation_precision": 0.9998,
+    "validation_recall": 0.9998,
+    "validation_f1": 0.9998
+  },
+  "NTP": {
+    "threshold": 0.507,
+    "validation_precision": 0.9994,
+    "validation_recall": 0.9988,
+    "validation_f1": 0.9991
+  },
+  "Syn": {
+    "threshold": 0.77,
+    "validation_precision": 0.9989,
+    "validation_recall": 0.9933,
+    "validation_f1": 0.9961
+  },
+  "TFTP": {
+    "threshold": 0.577,
+    "validation_precision": 0.9997,
+    "validation_recall": 0.9967,
+    "validation_f1": 0.9982
+  },
+  "UDP": {
+    "threshold": 0.61,
+    "validation_precision": 0.9467,
+    "validation_recall": 0.9784,
+    "validation_f1": 0.9623
+  },
+  "UDP-Reflection-Amplification": {
+    "threshold": 0.5,
+    "validation_precision": 0.9589,
+    "validation_recall": 0.9359,
+    "validation_f1": 0.9473
+  },
+  "WebDDoS": {
+    "threshold": 0.95,
+    "validation_precision": 1.0,
+    "validation_recall": 0.5667,
+    "validation_f1": 0.7234
+  }
+}

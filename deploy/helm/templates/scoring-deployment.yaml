@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ddos-defense.fullname" . }}-scoring
+  labels:
+    {{- include "ddos-defense.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scoring-service
+spec:
+  replicas: {{ .Values.scoringService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ddos-defense.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: scoring-service
+  template:
+    metadata:
+      labels:
+        {{- include "ddos-defense.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: scoring-service
+    spec:
+      containers:
+        - name: scoring-service
+          image: "{{ .Values.scoringService.image.repository }}:{{ .Values.scoringService.image.tag }}"
+          imagePullPolicy: {{ .Values.scoringService.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "ddos-defense.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ddos-defense.fullname" . }}-secrets
+          livenessProbe:
+            {{- toYaml .Values.scoringService.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.scoringService.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.scoringService.resources | nindent 12 }}

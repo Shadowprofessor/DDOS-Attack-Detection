@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ddos-defense.fullname" . }}-controller
+  labels:
+    {{- include "ddos-defense.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ryu-controller
+spec:
+  replicas: {{ .Values.controller.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ddos-defense.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ryu-controller
+  template:
+    metadata:
+      labels:
+        {{- include "ddos-defense.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ryu-controller
+    spec:
+      containers:
+        - name: ryu-controller
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          ports:
+            - name: openflow
+              containerPort: {{ .Values.controller.service.openflowPort }}
+              protocol: TCP
+            - name: rest
+              containerPort: {{ .Values.controller.service.restPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "ddos-defense.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ddos-defense.fullname" . }}-secrets
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}

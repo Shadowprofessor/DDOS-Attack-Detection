@@ -1,0 +1,15 @@
+apiVersion: v2
+name: ddos-defense
+description: A layered DDoS/DoS detection and mitigation platform with ML scoring, eBPF/XDP probes, and human-in-the-loop triage.
+type: application
+version: 3.0.0
+appVersion: "3.0.0"
+keywords:
+  - ddos
+  - security
+  - machine-learning
+  - sdn
+  - openflow
+  - ebpf
+maintainers:
+  - name: Core Security Team

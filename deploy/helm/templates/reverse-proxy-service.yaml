@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ddos-defense.fullname" . }}-reverse-proxy
+  labels:
+    {{- include "ddos-defense.labels" . | nindent 4 }}
+    app.kubernetes.io/component: reverse-proxy
+spec:
+  type: {{ .Values.reverseProxy.service.type }}
+  ports:
+    - port: {{ .Values.reverseProxy.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ddos-defense.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: reverse-proxy

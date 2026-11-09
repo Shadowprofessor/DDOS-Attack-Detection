@@ -1,0 +1,15 @@
+pytest
+scikit-learn
+xgboost
+pandas
+numpy
+scapy
+fastapi
+uvicorn
+httpx
+pyyaml
+requests
+torch
+# Observability (M0): metrics + JSON logs are implemented dependency-free in src/obs/.
+# Optional future swap-ins (not required): prometheus-client, structlog.
+# Linux-only deps added in their milestones: ryu, mininet, bcc/libbpf (M3/M4); lightgbm (optional, M1).

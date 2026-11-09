@@ -1,0 +1,51 @@
+# =============================================================================
+# DDoS Attack Detection & Mitigation System
+# Environment: Cloud (AWS / GCP / Azure VPC Flow Logs & Virtual Cloud Instances)
+# =============================================================================
+environment: "cloud"
+
+# Layer 1 Capture Backend
+capture_backend:
+  type: "cloud_flow_log"
+  cloud_flow_log:
+    provider: "${CLOUD_PROVIDER:-aws}"
+    window_seconds: 300
+    log_group: "${VPC_LOG_GROUP:-/aws/vpc/flowlogs}"
+
+# Layer 2 Machine Learning Models
+models:
+  # Hierarchical XGBoost Pipeline (Used for batch scoring, health validation, and taxonomy metadata)
+  hierarchical:
+    model_dir: "${DDOS_MODEL_DIR:-src/models}"
+  # Calibrated Ensemble (Used for real-time /score/flow single-flow scoring and consensus triage)
+  ensemble:
+    rf_path: "${DDOS_RF_PATH:-models/cicddos2019_rf.pkl}"
+    xgb_path: "${DDOS_XGB_PATH:-models/cicddos2019_xgboost.pkl}"
+    sequence_classifier_path: "${DDOS_SEQ_PATH:-models/sequence_classifier_best.pt}"
+    ensemble_bundle_path: "${DDOS_ENSEMBLE_BUNDLE:-models/ensemble_weights.joblib}"
+
+# Scoring Service (FastAPI) & Security
+scoring_service:
+  host: "0.0.0.0"
+  port: 8000
+  log_level: "info"
+  rate_limit:
+    window_seconds: "${DDOS_RATE_LIMIT_WINDOW:-60}"
+    max_requests: "${DDOS_RATE_LIMIT_MAX:-120}"
+    max_batch_size: "${DDOS_MAX_BATCH_SIZE:-1000}"
+  auth:
+    api_keys: "${DDOS_API_KEYS:-}"
+    admin_keys: "${DDOS_ADMIN_KEYS:-}"
+  pending_actions_path: "${DDOS_PENDING_ACTIONS_PATH:-data/pending_actions.json}"
+
+# Layer 3 LLM Reasoning Agent (Nemotron / OpenRouter)
+llm:
+  endpoint: "${OPENROUTER_ENDPOINT:-https://openrouter.ai/api/v1/chat/completions}"
+  model: "${OPENROUTER_MODEL:-nvidia/nemotron-3-ultra-550b-a55b:free}"
+  api_key: "${OPENROUTER_API_KEY:-}"
+
+# Cloud Mitigation Providers (Unset by default; populated only if live cloud scrubbing contract exists)
+cloud_providers:
+  cloudflare:
+    api_token: "${CLOUDFLARE_API_TOKEN:-}"
+    account_id: "${CLOUDFLARE_ACCOUNT_ID:-}"

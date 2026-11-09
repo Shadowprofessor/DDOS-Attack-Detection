@@ -1,0 +1,33 @@
+[Unit]
+Description=DDoS Attack Detection & Mitigation — FastAPI Scoring Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ddos
+Group=ddos
+WorkingDirectory=/opt/ddos-defense
+EnvironmentFile=-/etc/ddos-defense/ddos-defense.env
+Environment=PYTHONPATH=/opt/ddos-defense
+Environment=DDOS_MODEL_DIR=/opt/ddos-defense/models
+
+ExecStart=/opt/ddos-defense/venv/bin/uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 4
+Restart=always
+RestartSec=5s
+
+# Security Hardening Directives
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Resource Limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

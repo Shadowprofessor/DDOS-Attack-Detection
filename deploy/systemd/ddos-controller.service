@@ -1,0 +1,30 @@
+[Unit]
+Description=DDoS Attack Detection & Mitigation — Ryu OpenFlow Controller
+After=network.target ddos-scoring.service
+Wants=ddos-scoring.service
+
+[Service]
+Type=simple
+User=ddos
+Group=ddos
+WorkingDirectory=/opt/ddos-defense
+EnvironmentFile=-/etc/ddos-defense/ddos-defense.env
+Environment=PYTHONPATH=/opt/ddos-defense
+
+ExecStart=/opt/ddos-defense/venv/bin/python run_ryu.py Codes/controller/enhanced_security_controller.py --ofp-tcp-listen-port 6653
+Restart=always
+RestartSec=5s
+
+# Security Hardening Directives
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+
+# Resource Limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
