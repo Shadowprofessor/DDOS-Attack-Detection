@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.2] — 2026-11-09
+
+### Added
+- Supply-chain & CI security: `security.yml` (gitleaks secret scan, Bandit static analysis,
+  pip-audit dependency audit [advisory], CycloneDX SBOM artifact) and `codeql.yml`
+  (CodeQL for Python + JavaScript, weekly + on PR).
+- Dependabot for pip and GitHub Actions.
+- `SECURITY.md` disclosure policy and `.well-known/security.txt` (RFC 9116).
+- CycloneDX SBOM attached to each GitHub release.
+- README status badges (Tests, Security Scans, CodeQL, Release).
+
+### Security
+- **CWE-502:** `SequenceClassifier.load()` now uses `torch.load(weights_only=True)` with an
+  explicit allowlist (sklearn scaler/imputer + numpy array/dtype reconstructors only), so a
+  tampered checkpoint cannot execute code. Regression test added.
+- MD5 used for leakage-eval row de-duplication is now marked `usedforsecurity=False` (B324);
+  hashes are unchanged.
+- Bandit `B104` (`"0.0.0.0"` placeholder IPs, not socket binds) annotated with justified
+  `# nosec` comments.
+
 ## [4.0.1] — 2026-11-09
 
 ### Fixed
@@ -42,5 +62,6 @@ supersede the prior public tags (which reached v3.1).
 - Reported detection numbers are **CIC-DDoS2019 same-dataset** (separate extraction);
   cross-dataset generalization (CIC-IDS2017 / UNSW-NB15) is planned for v5.0.0 (M6).
 
+[4.0.2]: https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases/tag/v4.0.2
 [4.0.1]: https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases/tag/v4.0.1
 [4.0.0]: https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases/tag/v4.0.0

@@ -276,8 +276,8 @@ class CloudFlowLogBackend(CaptureBackend):
             bytes_cnt = int(jp.get("bytes", 64))
             start_ts = float(raw.get("timestamp_seconds", 0.0))
             return {
-                "src_ip": conn.get("src_ip", "0.0.0.0"),
-                "dst_ip": conn.get("dest_ip", "0.0.0.0"),
+                "src_ip": conn.get("src_ip", "0.0.0.0"),  # nosec B104 - default when field missing, not a bind
+                "dst_ip": conn.get("dest_ip", "0.0.0.0"),  # nosec B104 - default when field missing, not a bind
                 "src_port": int(conn.get("src_port", 0)),
                 "dst_port": int(conn.get("dest_port", 0)),
                 "protocol": int(conn.get("protocol", 6)),

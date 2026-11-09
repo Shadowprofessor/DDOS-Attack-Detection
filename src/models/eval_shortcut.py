@@ -42,7 +42,7 @@ def _prep(df, feats):
 
 
 def _rowhash(a):
-    return hashlib.md5(np.ascontiguousarray(a, dtype=np.float64).tobytes()).hexdigest()
+    return hashlib.md5(np.ascontiguousarray(a, dtype=np.float64).tobytes(), usedforsecurity=False).hexdigest()
 
 
 def _binary(yt, yp, labels, benign="Benign"):
