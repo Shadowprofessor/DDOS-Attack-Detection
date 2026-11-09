@@ -45,7 +45,7 @@ def decode_ipv4(ip_uint32: int) -> str:
     try:
         return socket.inet_ntoa(struct.pack("<I", ip_uint32))
     except Exception:
-        return "0.0.0.0"
+        return "0.0.0.0"  # nosec B104 - placeholder IP on decode failure, not a socket bind
 
 
 def encode_ipv4(ip_str: str) -> int:

@@ -336,3 +336,26 @@ def test_synthetic_window_building_and_mini_train():
     )
     assert len(history["train_loss"]) == 2
     assert isinstance(model, BiLSTMSequenceModel)
+
+
+class _MaliciousPayload:
+    """Simulates a tampered checkpoint: unpickling would call a function (here a harmless
+    marker writer) — exactly the CWE-502 arbitrary-code-execution vector."""
+
+    def __init__(self, marker_path):
+        self.marker_path = marker_path
+
+    def __reduce__(self):
+        return (open, (self.marker_path, "w"))
+
+
+def test_load_refuses_tampered_checkpoint(tmp_path):
+    """SequenceClassifier.load() uses weights_only=True with a narrow allowlist, so a checkpoint
+    carrying a non-allowlisted callable is rejected and its payload never runs (CWE-502)."""
+    marker = tmp_path / "pwned.txt"
+    bad = tmp_path / "tampered.pt"
+    torch.save({"model_state_dict": {}, "config": {}, "payload": _MaliciousPayload(str(marker))}, bad)
+
+    with pytest.raises(Exception):
+        SequenceClassifier(device="cpu").load(str(bad))
+    assert not marker.exists(), "tampered checkpoint payload executed during load"

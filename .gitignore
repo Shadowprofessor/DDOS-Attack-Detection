@@ -56,7 +56,7 @@ build/
 
 # Model artifacts (regenerate via scripts)
 *.joblib
-models/
+/models/
 
 # Local handoff notes (reference old history; keep local)
 docs/plans/HANDOFF.md

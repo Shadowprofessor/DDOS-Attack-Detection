@@ -82,7 +82,7 @@ def main(argv=None) -> int:
     import hashlib
 
     def _rowhash(arr):
-        return hashlib.md5(np.ascontiguousarray(arr, dtype=np.float64).tobytes()).hexdigest()
+        return hashlib.md5(np.ascontiguousarray(arr, dtype=np.float64).tobytes(), usedforsecurity=False).hexdigest()
 
     test_df = _prep(pd.read_parquet(args.test), feats)
     test_df = test_df[test_df["Label"].isin(labels)]

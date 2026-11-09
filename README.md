@@ -1,13 +1,16 @@
 # Advanced Multi-Layer DDoS Detection & Mitigation Platform
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Tests](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/tests.yml/badge.svg)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/tests.yml)
+[![Security Scans](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/security.yml/badge.svg)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/security.yml)
+[![CodeQL](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/codeql.yml/badge.svg)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/Shadowprofessor/DDOS-Attack-Detection)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests: 250 Passing](https://img.shields.io/badge/Tests-250%20Passing-brightgreen.svg)](tests/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![Security: Gated Mitigation](https://img.shields.io/badge/Security-Approval%20Gated-orange.svg)](src/mitigation/)
 
 An advanced, defense-in-depth Distributed Denial of Service (DDoS) detection, attacker forensics, and intelligent mitigation platform designed for Software-Defined Networks (SDN) and modern cloud edge infrastructures. All detection code is strictly defensive; attack-traffic generation is restricted to isolated local test harnesses targeting owned containers only. Mitigation actions require explicit human approval — no automatic execution.
 
-> ✅ **Verified**: 250 tests passing — 2026-10-23
+> ✅ **318 tests passing**; CI is green on a fresh clone via a DummyClassifier fallback.
 
 ---
 

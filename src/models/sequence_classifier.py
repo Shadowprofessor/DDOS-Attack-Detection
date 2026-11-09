@@ -26,6 +26,28 @@ import torch.nn as nn
 from src.features.flow_extractor import CICFLOWMETER_FEATURE_NAMES, NUM_FEATURES
 from src.models.classifier import CICDDOS2019_CLASSES
 
+
+def _torch_safe_globals() -> list:
+    """Explicit allowlist for ``torch.load(weights_only=True)``.
+
+    Only the data classes needed to rebuild the fitted sklearn scaler/imputer stored in a
+    checkpoint. None of these can execute arbitrary code, so a tampered checkpoint cannot run
+    a payload on load (CWE-502). Works on numpy 1.x and 2.x.
+    """
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.impute import SimpleImputer
+    try:
+        from numpy._core import multiarray as _ma  # numpy >= 2
+    except ImportError:  # pragma: no cover - numpy 1.x
+        from numpy.core import multiarray as _ma
+    allow = [StandardScaler, SimpleImputer, _ma.scalar, _ma._reconstruct, np.ndarray, np.dtype]
+    dtypes = getattr(np, "dtypes", None)
+    for name in ("Float64DType", "Float32DType", "Int64DType", "Int32DType", "BoolDType"):
+        cls = getattr(dtypes, name, None) if dtypes is not None else None
+        if cls is not None:
+            allow.append(cls)
+    return allow
+
 # Exact requirement caveat from architecture specification
 PSEUDO_TEMPORAL_CAVEAT: str = (
     "Trained on synthetic pseudo-temporal windows (same-class CSV rows grouped, not real "
@@ -372,7 +394,9 @@ class SequenceClassifier:
 
     def load(self, path: str) -> None:
         """Load SequenceClassifier weights and configuration bundle."""
-        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        # weights_only=True + explicit allowlist: refuses to unpickle arbitrary callables.
+        with torch.serialization.safe_globals(_torch_safe_globals()):
+            checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         cfg = checkpoint.get("config", {})
 
         self.window_size = int(checkpoint.get("window_size", 10))
