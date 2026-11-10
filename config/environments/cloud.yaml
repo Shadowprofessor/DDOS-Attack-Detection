@@ -49,3 +49,15 @@ cloud_providers:
   cloudflare:
     api_token: "${CLOUDFLARE_API_TOKEN:-}"
     account_id: "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+# Layer-3 Nemotron threat analyst (M2). Env vars override these (DDOS_LLM_*, NVIDIA_API_KEY).
+analyst:
+  base_url: "${DDOS_LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}"
+  # Fallback chain, tried in order; unavailable models fall through to the rule-based summary.
+  models: "${DDOS_LLM_MODELS:-nvidia/nemotron-3-ultra-550b-a55b,nvidia/nemotron-3-super-120b-a12b}"
+  timeout_s: "${DDOS_LLM_TIMEOUT:-90}"
+  enable_thinking: "${DDOS_LLM_ENABLE_THINKING:-false}"
+  max_tokens: "${DDOS_LLM_MAX_TOKENS:-1500}"
+  hash_ips: "${DDOS_LLM_HASH_IPS:-false}"
+  price_in_per_1m: "${DDOS_LLM_PRICE_IN_PER_1M:-0}"
+  price_out_per_1m: "${DDOS_LLM_PRICE_OUT_PER_1M:-0}"

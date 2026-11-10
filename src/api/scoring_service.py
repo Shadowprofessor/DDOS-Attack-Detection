@@ -494,6 +494,10 @@ app.add_middleware(
 )
 
 app.include_router(dashboard_router)
+
+from src.api.analyst_router import router as analyst_router  # noqa: E402  Layer-3 analyst API
+
+app.include_router(analyst_router)
 if os.path.isdir(STATIC_DIR):
     from fastapi.staticfiles import StaticFiles
     app.mount("/dashboard/static", StaticFiles(directory=STATIC_DIR), name="dashboard_static")

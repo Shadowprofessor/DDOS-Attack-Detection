@@ -98,6 +98,17 @@ ALERTS = REGISTRY.counter("ddos_alerts_total", "Detection alerts emitted, by sev
 PENDING_ACTIONS = REGISTRY.gauge("ddos_pending_actions", "Current count of PENDING mitigation actions.")
 SCORE_LATENCY = REGISTRY.gauge("ddos_request_latency_seconds", "Last observed HTTP request latency (seconds).")
 
+# Layer-3 LLM analyst (cost / latency / reliability / safety)
+LLM_REQUESTS = REGISTRY.counter("ddos_llm_requests_total", "LLM calls by model and outcome.")
+LLM_LATENCY_SUM = REGISTRY.counter("ddos_llm_latency_seconds_sum", "Total LLM call latency (seconds).")
+LLM_LATENCY_COUNT = REGISTRY.counter("ddos_llm_latency_seconds_count", "Number of timed LLM calls.")
+LLM_TOKENS = REGISTRY.counter("ddos_llm_tokens_total", "LLM tokens by model and kind (prompt/completion).")
+LLM_COST = REGISTRY.counter("ddos_llm_cost_usd_total", "Estimated LLM spend (USD; 0 on free tier).")
+ANALYST_CACHE = REGISTRY.counter("ddos_analyst_cache_total", "Analyst cache lookups by result.")
+ANALYST_FALLBACK = REGISTRY.counter("ddos_analyst_fallback_total", "Rule-based fallbacks by reason.")
+ANALYST_POLICY = REGISTRY.counter("ddos_analyst_policy_violations_total", "Output-policy corrections by kind.")
+ANALYST_SUSPICIOUS = REGISTRY.counter("ddos_analyst_suspicious_telemetry_total", "Instruction-like strings seen in telemetry.")
+
 
 def render_latest() -> str:
     """Return the current metrics in Prometheus text exposition format."""
