@@ -40,6 +40,15 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+def log_safe(value: object, max_len: int = 200) -> str:
+    """Neutralise an untrusted value before it goes into a log line (CWE-117).
+
+    CR/LF are escaped so a value cannot forge extra log entries; long values are truncated.
+    """
+    s = str(value).replace("\r", "\\r").replace("\n", "\\n")
+    return s if len(s) <= max_len else s[: max_len - 3] + "..."
+
+
 def configure_json_logging(level: int = logging.INFO) -> None:
     """Switch root logging to single-line JSON output."""
     root = logging.getLogger()

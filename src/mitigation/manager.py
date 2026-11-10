@@ -18,6 +18,8 @@ import logging
 import threading
 from typing import Dict, List, Optional, Tuple, Any
 
+from src.obs.logging import log_safe
+
 logger = logging.getLogger("MitigationManager")
 
 DEFAULT_STORAGE_PATH = os.path.abspath(
@@ -150,7 +152,7 @@ class PendingActionManager:
 
             logger.info(
                 "📋 [PROPOSED ACTION %s] %s — %s → %s | Reason: %s | Status: PENDING (requires human approval)",
-                action_id, action_type, attacker_ip, victim_ip, reason
+                action_id, log_safe(action_type), log_safe(attacker_ip), log_safe(victim_ip), log_safe(reason)
             )
             return action_id
 

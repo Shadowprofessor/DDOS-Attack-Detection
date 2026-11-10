@@ -47,6 +47,7 @@ logger.setLevel(_log_level)
 # Observability: Prometheus-compatible metrics + opt-in structured JSON logging.
 from src.obs import metrics as obs_metrics
 from src.obs import logging as obs_logging
+from src.obs.logging import log_safe
 obs_logging.configure_from_env()
 
 from src.mitigation.manager import get_manager, PendingActionManager
@@ -84,10 +85,18 @@ def _env_key_set(var_name: str) -> set[str]:
     return {k.strip() for k in os.environ.get(var_name, "").split(",") if k.strip()}
 
 
-def _announce_dev_key(label: str, value: str) -> None:
-    """Print a generated dev key ONCE to stdout for local use.
-    Deliberately uses print(), never the logger, so key values never land in JSON logs."""
-    print(f"[ddos-scoring] Generated ephemeral {label} for '{_ENV_NAME}' env: {value}", flush=True)
+def _announce_dev_key(label: str, value: str) -> str:
+    """Write a generated dev key to a local owner-only file and print only the file path.
+
+    The value never goes to stdout or the logger (stdout is often shipped to log collectors).
+    Path: ``DDOS_DEV_KEY_FILE`` or ``./.dev-keys`` (gitignored). Returns the path.
+    """
+    path = os.environ.get("DDOS_DEV_KEY_FILE") or os.path.join(os.getcwd(), ".dev-keys")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        f.write(f"{_ENV_NAME}\t{label}\t{value}\n")
+    print(f"[ddos-scoring] Generated ephemeral {label} for '{_ENV_NAME}' env -> written to {path}", flush=True)
+    return path
 
 
 # API keys: from config/env, or auto-generate one for dev. Fail closed in prod/staging.
@@ -102,7 +111,7 @@ if not (API_KEYS | _env_key_set("DDOS_API_KEYS")):
         )
     _generated_dev_key = f"dev-{secrets.token_hex(16)}"
     API_KEYS.add(_generated_dev_key)
-    logger.warning("No API keys configured; generated an ephemeral dev API key (value printed to stdout).")
+    logger.warning("No API keys configured; generated an ephemeral dev API key (value written to the dev key file).")
     _announce_dev_key("scoring API key", _generated_dev_key)
 
 # Admin API keys: separate, privileged tier for mitigation approval/rejection.
@@ -117,7 +126,7 @@ if not (ADMIN_KEYS | _env_key_set("DDOS_ADMIN_KEYS")):
         )
     _generated_dev_admin_key = f"dev-admin-{secrets.token_hex(16)}"
     ADMIN_KEYS.add(_generated_dev_admin_key)
-    logger.warning("No admin keys configured; generated an ephemeral dev admin key (value printed to stdout).")
+    logger.warning("No admin keys configured; generated an ephemeral dev admin key (value written to the dev key file).")
     _announce_dev_key("admin key", _generated_dev_admin_key)
 
 # Rate limiting config
@@ -737,7 +746,7 @@ async def score_flow(
     if mgr.is_ip_blocked(attacker_ip):
         logger.info(
             "🛡️ Ingress blocklist: IP %s already has EXECUTED mitigation action — DROPPING before scoring",
-            attacker_ip,
+            log_safe(attacker_ip),
         )
         # Broadcast dropped event to SOC dashboard
         get_broadcaster().broadcast_dropped({
@@ -1011,7 +1020,8 @@ async def score_flow(
 
         logger.info(
             "key=%s score_flow mode=%s attack=%s family=%s conf=%.3f degraded=%s",
-            key[:8], model, result.is_attack, result.attack_family, result.confidence, degraded_conf,
+            log_safe(key[:8]), log_safe(model), result.is_attack, log_safe(result.attack_family), result.confidence,
+            degraded_conf,
         )
 
         # Decoupled fire-and-forget enqueue to dashboard broadcaster
@@ -1098,7 +1108,7 @@ async def score_batch(body: BatchFlowRequest, key: str = Depends(check_rate_limi
 
     logger.info(
         "key=%s score_batch count=%d attacks=%d",
-        key[:8], len(body.flows), int(attack_mask.sum()),
+        log_safe(key[:8]), len(body.flows), int(attack_mask.sum()),
     )
     return BatchResponse(results=results, count=len(results))
 
@@ -1132,7 +1142,8 @@ async def approve_action_endpoint(action_id: str, admin_key: str = Depends(verif
 
     success, message, updated_action = manager.approve(action_id, approver=f"admin_api:{admin_key[:8]}")
     if not success:
-        raise HTTPException(status_code=500, detail=f"Action execution failed: {message}")
+        logger.error("Action %s execution failed: %s", log_safe(action_id), log_safe(message))
+        raise HTTPException(status_code=500, detail="Action execution failed; see server logs.")
 
     pending = manager.get_pending()
     get_broadcaster().broadcast_pending_update(list(pending.values()), len(pending))

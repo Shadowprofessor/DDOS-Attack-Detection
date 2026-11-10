@@ -11,6 +11,7 @@ Verifies the safety contract:
 import os
 import sys
 import pytest
+from urllib.parse import urlparse
 from unittest.mock import MagicMock, patch, call
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -146,7 +147,7 @@ class TestCloudflareEnforcerSafetyContract:
 
             # Verify API call details
             call_args = mock_post.call_args
-            assert "api.cloudflare.com" in call_args[0][0]
+            assert urlparse(call_args[0][0]).hostname == "api.cloudflare.com"
             assert call_args[1]["json"]["prefix"] == "192.0.2.100/32"
 
     def test_no_direct_api_calls_in_propose_action_code_path(self, clean_manager):
@@ -292,7 +293,7 @@ class TestCloudflareEnforcerSafetyContract:
             # Verify API was called
             assert mock_post.call_count == 1
             call_args = mock_post.call_args
-            assert "api.cloudflare.com" in call_args[0][0]
+            assert urlparse(call_args[0][0]).hostname == "api.cloudflare.com"
             assert call_args[1]["json"]["prefix"] == "203.0.113.10/32"
             assert call_args[1]["json"]["nexthop"] == "scrub"
 

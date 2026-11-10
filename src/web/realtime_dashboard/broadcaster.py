@@ -14,6 +14,8 @@ from collections import deque
 from typing import Dict, Any, Optional, Set
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from src.obs.logging import log_safe
+
 logger = logging.getLogger("DashboardBroadcaster")
 
 
@@ -310,7 +312,7 @@ class DashboardBroadcaster:
                 # Condition 3: Channel is server-to-client only.
                 # Any inbound message from client (arbitrary or approve/reject shaped)
                 # is intentionally IGNORED and NEVER processed!
-                logger.debug("Received and ignored inbound client message: %s", msg_text[:120])
+                logger.debug("Received and ignored inbound client message: %s", log_safe(msg_text, 120))
         except WebSocketDisconnect:
             pass
         except Exception as e:
