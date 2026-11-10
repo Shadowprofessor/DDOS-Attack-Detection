@@ -162,6 +162,20 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 
 ---
 
+## 🖥️ SOC Web App (v4.3.0)
+
+A React SOC console served at **`/app`**: login, an overview with KPIs and CERT-In countdowns,
+and a filterable incident list. It uses an HttpOnly session cookie, CSRF tokens and a strict CSP
+with no inline script or style. Server text always renders as text.
+
+```bash
+cd dashboard && npm ci && npm run build   # then open http://localhost:8000/app
+```
+
+Details and the security model: [`docs/SOC_APP.md`](docs/SOC_APP.md).
+
+---
+
 ## 🚨 Incident Response (M3, v4.2.0)
 
 Detections become tracked incidents with a **NIST SP 800-61r3 lifecycle**, a **hash-chained

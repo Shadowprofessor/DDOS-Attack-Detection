@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] — 2026-11-10
+
+### Added — SOC web app, part 1 (`dashboard/`, docs: `docs/SOC_APP.md`)
+- React 19 + Vite 8 + strict TypeScript app served by FastAPI at `/app`, with a
+  traversal-safe page fallback that never shadows `/api`. Pinned `package-lock.json`.
+- **Login** exchanges an API key for a server-side session (`ddos_session`: HttpOnly, Secure,
+  SameSite=Strict). New id on every login, idle + absolute expiry, role re-checked every request,
+  login rate limit. `GET /api/session`, `POST /api/session/logout`.
+- **CSRF**: synchroniser token required on cookie-authenticated mutations (403 otherwise);
+  header-key API clients unchanged.
+- **Strict CSP** (no `unsafe-inline`/`unsafe-eval`) + nosniff, no-referrer, Permissions-Policy,
+  frame denial on `/app*` and `/api/*`; HSTS in production/staging.
+- **Overview** page + `GET /api/overview`: open incidents, pending approvals, MTTC,
+  false-positive rate, open-by-severity chart, CERT-In countdowns, recent incidents, health.
+- **Incidents** page: filter, sort, paginate. `GET /api/incidents` gains `sort` and `min_severity`.
+- Dark theme (cyan / violet / amber; red only for severity 5), skip link, visible focus,
+  reduced-motion, no horizontal scroll at 375 px.
+- CI workflow `webapp.yml`: lint, typecheck, Vitest, build, `npm audit --audit-level=high`,
+  Playwright against the real API. Dependabot for npm.
+
+### Changed
+- CORS is same-origin by default (was `*`); set `DDOS_CORS_ORIGINS` to allow listed origins.
+
+### Tests
+- pytest `tests/test_soc_session.py` (20): cookie flags, rotation, expiry, revocation, CSRF,
+  CSP/headers, SPA fallback + traversal, overview. `test_ir_api.py` +1 (sort/filter).
+- Vitest (15): API client (CSRF only on mutations, same-origin only, error mapping), auth store
+  (memory-only), severity colours. Playwright (8): login, bad key, list filter/sort/paginate,
+  XSS renders as text, logout, cookie flags + no key in storage, CSRF-less POST → 403, 375 px.
+
 ## [4.2.0] — 2026-11-10
 
 ### Added — M3: incident-response backend (`src/ir/`, docs: `docs/IR.md`)

@@ -11,3 +11,9 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["ci", "dependencies"]
+  - package-ecosystem: "npm"
+    directory: "/dashboard"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "security"]
