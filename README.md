@@ -118,6 +118,50 @@ production/staging.
 
 ---
 
+## 🧠 AI Threat Analyst (Layer 3 — NVIDIA Nemotron 3 Ultra)
+
+The analyst triages **one aggregated incident at a time** (never packets) and returns a strict,
+validated analysis: attack type, MITRE ATT&CK IDs, severity 1-5, confidence, evidence,
+false-positive assessment, ranked recommended actions, next queries and a report summary.
+**It recommends; it never executes** — there is no code path from the analyst to any enforcer.
+
+```bash
+curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
+     -H "Content-Type: application/json" -d @incident.json      # IncidentAggregate JSON
+```
+
+| Piece | Where |
+|---|---|
+| Versioned system prompt | `prompts/threat_analyser.md` |
+| Input / output contracts (pydantic) | `src/agent/schemas.py` |
+| Sanitiser + `<telemetry>` wrapping + IP pseudonymisation | `src/agent/sanitize.py` |
+| Model chain, tool-calling, cost/latency metrics | `src/agent/llm_client.py` |
+| Validate → retry once → fallback, cache, **output policy** | `src/agent/threat_analyst.py` |
+| API (`/api/analyst/analyze`, `/api/analyst/config`) | `src/api/analyst_router.py` |
+
+- **Models** (verified against the live NIM model list; configurable via `analyst:` in
+  `config/environments/*.yaml` or `DDOS_LLM_MODELS`): `nvidia/nemotron-3-ultra-550b-a55b` →
+  `nvidia/nemotron-3-super-120b-a12b` → deterministic rule-based summary.
+  *Note:* `nemotron-3-super-120b-a12b` is listed in the catalog but returns HTTP 404 for the
+  current account, so in practice the chain is Ultra → rules until it is provisioned.
+- **Latency:** a full structured analysis takes ~30-45 s on Ultra (timeout 90 s). That is why it
+  runs once per incident window (cached), off the fast path; the rule-based result is instant.
+- **Prompt-injection defence (layered):** (1) sanitise attacker strings, escape tags, wrap in
+  `<telemetry>`; (2) system prompt declares telemetry untrusted; (3) **code-enforced output policy** —
+  `incident_id` is pinned, every action requires human approval, actions targeting IPs not in the
+  incident are dropped, injected downgrades are overridden or flagged for review, prompt canaries are
+  redacted. **Live result (32 payloads, Nemotron Ultra):** 34% injection success with no defences
+  → **0/31** with prompt defences (95% upper bound ≈10%; static payloads, not adaptive attacks).
+  The code-layer guarantees hold even for a fully compromised model (tested). The regex
+  instruction detector does **not** generalise (0/12 held-out) and no safety property depends on
+  it. Details: [`docs/EVAL_NOTES.md` §6](docs/EVAL_NOTES.md).
+- **Observability:** `ddos_llm_requests_total`, `ddos_llm_latency_seconds_{sum,count}`,
+  `ddos_llm_tokens_total`, `ddos_llm_cost_usd_total`, `ddos_analyst_cache_total`,
+  `ddos_analyst_fallback_total`, `ddos_analyst_policy_violations_total` on `/metrics`.
+- The operator chat (`/api/chat`) is read-only, requires a key, and uses the same sanitiser.
+
+---
+
 ## 📋 Version History
 
 | Version | Tag | Description | Status |
