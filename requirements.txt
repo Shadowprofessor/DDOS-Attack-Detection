@@ -29,7 +29,7 @@ sqlalchemy==2.1.3
 reportlab==5.1.0
 
 # Tests
-pytest==9.1.1
+pytest==9.2.0
 
 # Observability (M0): metrics + JSON logs are implemented dependency-free in src/obs/.
 # Optional future swap-ins (not required): prometheus-client, structlog.
