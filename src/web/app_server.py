@@ -2,9 +2,9 @@
 """
 Serves the React SOC app (`dashboard/dist`) at /app and adds browser security headers.
 
-* `/app` and `/app/<path>`: a real file inside dist is served; anything else gets index.html
-  (SPA fallback). Paths are resolved and must stay inside dist (no traversal). `/api/*` is
-  never touched.
+* `/app` and `/app/<path>`: a file is served only if it is in the server-built index of dist
+  (no path is built from the URL, so no traversal); anything else gets index.html (SPA
+  fallback). `/api/*` is never touched.
 * Security headers on /app* and /api*: strict CSP (no inline script/style), nosniff,
   no-referrer, Permissions-Policy, frame denial; HSTS in production/staging.
 """
@@ -39,18 +39,35 @@ def _is_prod() -> bool:
     return os.environ.get("DDOS_ENV", "").lower() in ("production", "prod", "staging")
 
 
+_index_cache: dict = {"key": None, "files": {}}
+
+
+def _dist_files(dist: Path, index: Path) -> dict:
+    """Map of 'relative/posix/path' -> file, built by walking dist ourselves (rebuilt per build).
+
+    Requests are looked up in this map, so no filesystem path is ever built from the URL."""
+    key = (str(dist), index.stat().st_mtime_ns)
+    if _index_cache["key"] != key:
+        files = {}
+        for p in dist.rglob("*"):
+            if p.is_file() and not p.is_symlink():
+                files[p.relative_to(dist).as_posix()] = p
+        _index_cache.update(key=key, files=files)
+    return _index_cache["files"]
+
+
 def _serve(rel: str):
     dist = DIST_DIR.resolve()
     index = dist / "index.html"
     if not index.is_file():
         return HTMLResponse(NOT_BUILT, status_code=503)
     if rel:
-        target = (dist / rel).resolve()
-        if dist in target.parents and target.is_file():
+        target = _dist_files(dist, index).get(rel)
+        if target is not None:
             # hashed assets are immutable; index.html is not cached
-            cache = "public, max-age=31536000, immutable" if "assets" in target.parts else "no-cache"
+            cache = "public, max-age=31536000, immutable" if rel.startswith("assets/") else "no-cache"
             return FileResponse(target, headers={"Cache-Control": cache})
-        if "." in Path(rel).name:  # looks like a missing asset, not a client route
+        if "." in rel.rsplit("/", 1)[-1]:  # looks like a missing asset, not a client route
             raise HTTPException(status_code=404, detail="Not found.")
     return FileResponse(index, media_type="text/html", headers={"Cache-Control": "no-cache"})
 

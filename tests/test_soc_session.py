@@ -13,6 +13,7 @@ from src.web.session import COOKIE_NAME, SessionStore, get_session_store
 
 ANALYST_KEY = "soc-analyst-key-1"
 ADMIN_KEY = "soc-admin-key-01"
+UNKNOWN_KEY = "x" * 16  # well-formed but not configured
 
 
 @pytest.fixture
@@ -61,8 +62,8 @@ class TestSessionCookie:
         assert r.json()["role"] == "analyst" and len(r.json()["csrf_token"]) >= 32
 
     def test_bad_key_401_and_rate_limit(self, client):
-        assert client.post("/api/session/login", json={"api_key": "wrong-key-123"}).status_code == 401
-        codes = [client.post("/api/session/login", json={"api_key": "wrong-key-123"}).status_code
+        assert client.post("/api/session/login", json={"api_key": UNKNOWN_KEY}).status_code == 401
+        codes = [client.post("/api/session/login", json={"api_key": UNKNOWN_KEY}).status_code
                  for _ in range(12)]
         assert 429 in codes
 
