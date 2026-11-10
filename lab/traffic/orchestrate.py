@@ -2,7 +2,7 @@
 """
 LAB-ONLY orchestrator (v4.6.1). Run as root inside WSL2:
 
-    sudo -E python3 -m lab.traffic.orchestrate --out data/lab_runs/<run-id> [--scenarios all] [--containment]
+    sudo python3 -m lab.traffic.orchestrate --out data/lab_runs/<run-id> [--scenarios all] [--containment]
 
 Builds an isolated Mininet LAN (10.99.0.0/24, one switch, no controller, NO NAT, no route out),
 starts plain HTTP on the victim, then for each scenario: starts a pcap capture on the victim's
@@ -39,7 +39,8 @@ def build_net(scope, switch: str, with_nat: bool = False):  # pragma: no cover -
     from mininet.nodelib import LinuxBridge
 
     sw_cls = OVSBridge if switch == "ovs" else LinuxBridge
-    net = Mininet(controller=None, switch=sw_cls, autoSetMacs=True, waitConnected=False)
+    net = Mininet(controller=None, switch=sw_cls, autoSetMacs=True, waitConnected=False,
+                  ipBase=str(scope.networks[0]))
     s1 = net.addSwitch("s1")
     hosts = {}
     for role, ip in scope.hosts.items():
@@ -47,7 +48,7 @@ def build_net(scope, switch: str, with_nat: bool = False):  # pragma: no cover -
         net.addLink(h, s1)
         hosts[role] = h
     if with_nat:  # containment test only: deliberately open a path out, then prove it is dropped
-        net.addNAT(name="nat0", ip="10.99.0.254/24", subnet=str(scope.networks[0])).configDefault()
+        net.addNAT(name="nat0", ip="10.99.0.254/24")  # subnet from ipBase; sets host default routes
     net.start()
     for role in scope.source_pools:  # lab-only source aliases on that host
         for a in source_addresses(scope, role, 254):

@@ -39,13 +39,20 @@ class TrafficReport:
     connections: int
     stopped_by: str  # completed | kill_switch
     target: str
+    achieved_pps: float = 0.0  # what was really sent (python/scapy may fall short of rate_pps)
 
 
 # ----------------------------------------------------------------------------- emitters (private)
-def _emit_raw(pkt) -> None:
-    from scapy.all import send  # type: ignore  # lab-only dependency
+_L3 = {}
 
-    send(pkt, verbose=0)
+
+def _emit_raw(pkt) -> None:
+    """Send one IP packet on a reused raw L3 socket (opening one per packet caps out ~200 pps)."""
+    if "sock" not in _L3:
+        from scapy.all import conf  # type: ignore  # lab-only dependency
+
+        _L3["sock"] = conf.L3socket()
+    _L3["sock"].send(pkt)
 
 
 def _emit_http_get(src: str, dst: str, port: int, timeout: float = 2.0) -> None:
@@ -133,28 +140,35 @@ class GatedTrafficRunner:
                 if self.kill.tripped():
                     rep.stopped_by = "kill_switch"
                     break
-                tick_end = self.clock() + tick
+                tick_start = self.clock()
+                tick_end = tick_start + tick
                 if p.protocol == "http_slow":
                     self._slow_tick(p, sources, target, slow_socks, rep)
                 else:
-                    per_batch = max(1, int(p.rate_pps * BATCH_S))
-                    for _b in range(int(tick / BATCH_S)):
-                        for _i in range(per_batch):
-                            if rep.packets >= budget:
-                                break
-                            src = self.rng.choice(sources)
-                            self._guard(src, target, target)
-                            if p.protocol == "http":
-                                if self.rng.random() < 0.2:  # ~1 request per 5 packets of rate budget
-                                    try:
-                                        self._http(src, target, p.dst_port or 80)
-                                        rep.connections += 1
-                                    except OSError:
-                                        pass
-                            else:
-                                self._raw(build_packet(p.protocol, src, target, p.dst_port, p.packet_size, self.rng))
-                            rep.packets += 1
-                        self.sleep(BATCH_S)
+                    per_tick = int(p.rate_pps * tick)
+                    sent = 0
+                    # paced by wall clock: never exceeds the rate, never stretches a tick
+                    while sent < per_tick and rep.packets < budget:
+                        now = self.clock()
+                        if now >= tick_end:
+                            break
+                        due = tick_start + sent / p.rate_pps
+                        if due > now:
+                            self.sleep(min(due - now, BATCH_S))
+                            continue
+                        src = self.rng.choice(sources)
+                        self._guard(src, target, target)
+                        if p.protocol == "http":
+                            if self.rng.random() < 0.2:  # ~1 request per 5 packets of rate budget
+                                try:
+                                    self._http(src, target, p.dst_port or 80)
+                                    rep.connections += 1
+                                except OSError:
+                                    pass
+                        else:
+                            self._raw(build_packet(p.protocol, src, target, p.dst_port, p.packet_size, self.rng))
+                        sent += 1
+                        rep.packets += 1
                 remaining = tick_end - self.clock()
                 if remaining > 0:
                     self.sleep(remaining)
@@ -165,6 +179,7 @@ class GatedTrafficRunner:
                 except OSError:
                     pass
             rep.ended_at = self.clock()
+            rep.achieved_pps = round(rep.packets / max(1e-6, rep.ended_at - rep.started_at), 1)
         return rep
 
     def _slow_tick(self, p, sources, target, socks, rep) -> None:
