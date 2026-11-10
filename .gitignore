@@ -60,3 +60,6 @@ build/
 
 # Local handoff notes (reference old history; keep local)
 docs/plans/HANDOFF.md
+
+# Local dev keys (generated when no keys are configured)
+.dev-keys

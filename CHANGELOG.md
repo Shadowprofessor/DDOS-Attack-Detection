@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] — 2026-11-10
+
+### Security — fixes for all open CodeQL high/medium alerts (19, pre-existing from v4.0.x)
+- **DOM XSS (4 high)** in the legacy dashboard `static/app.js`: every server-derived string
+  (IPs, action IDs, labels, caveats, dossier text, commands) is now passed through `escapeHtml`
+  before `innerHTML`. `escapeHtml` no longer drops `0` values.
+- **Remote property injection (1 high)**: taxonomy counts use a `Map`, so a flow label such as
+  `__proto__` cannot pollute the object prototype.
+- **Path injection (1 high)** in legacy `Codes/dashboard/app.py`: incident IDs used in file names
+  must match `[A-Za-z0-9_-]{1,64}`.
+- **Clear-text secret (1 high)**: generated dev keys are written to an owner-only `.dev-keys`
+  file (gitignored, override with `DDOS_DEV_KEY_FILE`); only the path is printed. Prod/staging
+  still refuse to start without configured keys.
+- **Log injection (8 medium)**: new `src.obs.logging.log_safe()` escapes CR/LF and truncates
+  untrusted values in the scoring service, mitigation manager and WS broadcaster.
+- **Stack-trace / error exposure (1 medium)**: a failed approval returns a generic 500; the
+  detail goes to the server log only.
+- **Incomplete URL check (3 high, tests only)**: tests compare `urlparse(...).hostname`.
+
+### Tests
+- `tests/test_codeql_hardening.py` (log injection, path allowlist, no error leak, JS escaping).
+- Dev-key test now checks the key is in the file and NOT in stdout or logs.
+
 ## [4.1.0] — 2026-11-10
 
 ### Added — M2: Nemotron AI threat analyst (Layer 3)

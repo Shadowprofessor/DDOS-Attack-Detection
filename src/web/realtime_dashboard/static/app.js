@@ -42,7 +42,7 @@
   let flowRateHistory = new Array(30).fill(0);
   let attackHistory = new Array(30).fill(0);
   let pendingActionsMap = new Map();
-  let taxonomyCounts = {};
+  let taxonomyCounts = new Map();
   let reconnectTimer = null;
 
   // Initialize key input
@@ -228,7 +228,7 @@
         }
 
         if (msg.taxonomy_counts) {
-          taxonomyCounts = msg.taxonomy_counts;
+          taxonomyCounts = new Map(Object.entries(msg.taxonomy_counts || {}));
           renderTaxonomy();
         }
         if (msg.pending_actions) {
@@ -255,7 +255,7 @@
         renderChart();
 
         if (flow.label) {
-          taxonomyCounts[flow.label] = (taxonomyCounts[flow.label] || 0) + (msg.batch_size || 1);
+          taxonomyCounts.set(String(flow.label), (taxonomyCounts.get(String(flow.label)) || 0) + (msg.batch_size || 1));
           renderTaxonomy();
         }
 
@@ -353,14 +353,14 @@
       html += `
         <div class="enforced-rule-card">
           <div class="enforced-rule-main">
-            <div class="enforced-rule-ip">${ip}</div>
+            <div class="enforced-rule-ip">${escapeHtml(ip)}</div>
             <div class="enforced-rule-meta">
               <span>Victim: 10.0.0.1</span>
               <span>Rule: iptables DROP</span>
             </div>
           </div>
           <div class="enforced-rule-counter">
-            <div class="enforced-rule-dropped">${count}</div>
+            <div class="enforced-rule-dropped">${escapeHtml(count)}</div>
             <div class="enforced-rule-dropped-label">Packets Dropped</div>
           </div>
           <div class="enforced-rule-status">ACTIVE</div>
@@ -559,7 +559,7 @@
   function renderTaxonomy() {
     if (!taxonomyList) return;
     taxonomyList.innerHTML = "";
-    const entries = Object.entries(taxonomyCounts).sort((a, b) => b[1] - a[1]);
+    const entries = Array.from(taxonomyCounts.entries()).sort((a, b) => b[1] - a[1]);
     if (entries.length === 0) {
       taxonomyList.innerHTML = `<div class="empty-hint">Awaiting flow telemetry...</div>`;
       return;
@@ -573,8 +573,8 @@
       item.className = "taxonomy-item";
       item.innerHTML = `
         <div class="tax-row">
-          <span>${label}</span>
-          <span>${count} (${pct}%)</span>
+          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(count)} (${pct}%)</span>
         </div>
         <div class="tax-bar-wrap">
           <div class="tax-bar-fill ${isBenign ? "benign" : "attack"}" style="width: ${pct}%"></div>
@@ -597,11 +597,11 @@
     item.className = `feed-item ${isAttack ? "attack" : "benign"}`;
     item.innerHTML = `
       <div>
-        <strong>${label}</strong>
-        ${consensus ? `<span class="badge ${getConsensusBadgeClass(consensus)}" style="margin-left:6px">${consensus}</span>` : ""}
+        <strong>${escapeHtml(label)}</strong>
+        ${consensus ? `<span class="badge ${getConsensusBadgeClass(consensus)}" style="margin-left:6px">${escapeHtml(consensus)}</span>` : ""}
         ${degraded ? `<span class="badge badge-degraded" style="margin-left:6px">⚠️ DEGRADED (${compPct}%)</span>` : ""}
       </div>
-      <div>Conf: ${conf} | ${new Date().toLocaleTimeString()}</div>
+      <div>Conf: ${escapeHtml(conf)} | ${new Date().toLocaleTimeString()}</div>
     `;
 
     flowFeed.prepend(item);
@@ -669,30 +669,30 @@
         chips.push(`<span class="model-chip" style="color:#94a3b8">ML: Benign (Overridden)</span>`);
       } else {
         if (breakdown.random_forest) {
-          chips.push(`<span class="model-chip">RF: ${breakdown.random_forest.label} (${(breakdown.random_forest.confidence || 0).toFixed(2)})</span>`);
+          chips.push(`<span class="model-chip">RF: ${escapeHtml(breakdown.random_forest.label)} (${(breakdown.random_forest.confidence || 0).toFixed(2)})</span>`);
         }
         if (breakdown.xgboost) {
-          chips.push(`<span class="model-chip">XGB: ${breakdown.xgboost.label} (${(breakdown.xgboost.confidence || 0).toFixed(2)})</span>`);
+          chips.push(`<span class="model-chip">XGB: ${escapeHtml(breakdown.xgboost.label)} (${(breakdown.xgboost.confidence || 0).toFixed(2)})</span>`);
         }
         if (breakdown.sequence_classifier && breakdown.sequence_classifier.active) {
-          chips.push(`<span class="model-chip">LSTM: ${breakdown.sequence_classifier.label} (${(breakdown.sequence_classifier.confidence || 0).toFixed(2)})</span>`);
+          chips.push(`<span class="model-chip">LSTM: ${escapeHtml(breakdown.sequence_classifier.label)} (${(breakdown.sequence_classifier.confidence || 0).toFixed(2)})</span>`);
         }
       }
 
       const consensusHtml = `
         <div class="consensus-container">
-          <div><span class="badge ${getConsensusBadgeClass(consensusTier)}">${consensusTier}</span></div>
+          <div><span class="badge ${getConsensusBadgeClass(consensusTier)}">${escapeHtml(consensusTier)}</span></div>
           ${chips.length > 0 ? `<div class="breakdown-chips">${chips.join("")}</div>` : ""}
-          ${caveat ? `<div class="caveat-callout"><span>⚠️</span> <span>${caveat}</span></div>` : ""}
-          ${isDegraded && degReason ? `<div class="caveat-callout" style="border-color:rgba(245, 158, 11, 0.5); background:rgba(245, 158, 11, 0.15);"><span>⚠️</span> <span>${degReason}</span></div>` : ""}
+          ${caveat ? `<div class="caveat-callout"><span>⚠️</span> <span>${escapeHtml(caveat)}</span></div>` : ""}
+          ${isDegraded && degReason ? `<div class="caveat-callout" style="border-color:rgba(245, 158, 11, 0.5); background:rgba(245, 158, 11, 0.15);"><span>⚠️</span> <span>${escapeHtml(degReason)}</span></div>` : ""}
         </div>
       `;
 
       tr.innerHTML = `
         <td>
           <div class="action-target">
-            <span class="target-ips">${action.attacker_ip} &rarr; ${action.victim_ip}</span>
-            <div class="action-id-tag">ID: ${action.action_id}</div>
+            <span class="target-ips">${escapeHtml(action.attacker_ip)} &rarr; ${escapeHtml(action.victim_ip)}</span>
+            <div class="action-id-tag">ID: ${escapeHtml(action.action_id)}</div>
           </div>
         </td>
         <td>
@@ -708,7 +708,7 @@
               bClass = "badge-campaign-cluster";
               bText = `🕸️ MULTI-FLOW CAMPAIGN: ${action.action_type}`;
             }
-            return `<span class="badge ${bClass}">${bText}</span>`;
+            return `<span class="badge ${bClass}">${escapeHtml(bText)}</span>`;
           })()}
         </td>
         <td>
@@ -720,14 +720,14 @@
         <td>${consensusHtml}</td>
         <td>
           <code style="font-size:11px; color:var(--text-secondary); background:rgba(0,0,0,0.3); padding:4px 6px; border-radius:4px; display:inline-block">
-            ${(action.commands && action.commands[0]) || "DROP attacker flow"}
+            ${escapeHtml((action.commands && action.commands[0]) || "DROP attacker flow")}
           </code>
         </td>
         <td class="text-right">
           <div class="btn-group">
-            <button class="btn btn-dossier" data-id="${action.action_id}" title="Inspect full Blue Team forensics &amp; prevention playbook"><span class="btn-icon">📋</span> Dossier</button>
-            <button class="btn btn-approve" data-id="${action.action_id}" title="Authorize &amp; execute containment rule for attacker ${action.attacker_ip}"><span class="btn-icon">✓</span> Approve &amp; Block</button>
-            <button class="btn btn-reject" data-id="${action.action_id}" title="Dismiss proposal without altering firewall rules (allow traffic)"><span class="btn-icon">✕</span> Reject &amp; Dismiss</button>
+            <button class="btn btn-dossier" data-id="${escapeHtml(action.action_id)}" title="Inspect full Blue Team forensics &amp; prevention playbook"><span class="btn-icon">📋</span> Dossier</button>
+            <button class="btn btn-approve" data-id="${escapeHtml(action.action_id)}" title="Authorize &amp; execute containment rule for attacker ${escapeHtml(action.attacker_ip)}"><span class="btn-icon">✓</span> Approve &amp; Block</button>
+            <button class="btn btn-reject" data-id="${escapeHtml(action.action_id)}" title="Dismiss proposal without altering firewall rules (allow traffic)"><span class="btn-icon">✕</span> Reject &amp; Dismiss</button>
           </div>
         </td>
       `;
@@ -850,27 +850,27 @@
       modalSeverityBadge.className = `modal-badge ${severity === "CRITICAL" ? "badge-vector" : "badge-split"}`;
     }
 
-    const anomaliesList = (forensics.observed_anomalies || []).map(a => `<li>${a}</li>`).join("");
-    const modelEvidenceList = (forensics.model_evidence || []).map(m => `<li>${m}</li>`).join("");
-    const kernelList = (hardening.kernel_parameters || []).map(k => `<div class="dossier-code">${k}</div>`).join("");
-    const firewallList = (hardening.firewall_rules || []).map(f => `<div class="dossier-code">${f}</div>`).join("");
-    const networkList = (hardening.network_measures || []).map(n => `<li>${n}</li>`).join("");
+    const anomaliesList = (forensics.observed_anomalies || []).map(a => `<li>${escapeHtml(a)}</li>`).join("");
+    const modelEvidenceList = (forensics.model_evidence || []).map(m => `<li>${escapeHtml(m)}</li>`).join("");
+    const kernelList = (hardening.kernel_parameters || []).map(k => `<div class="dossier-code">${escapeHtml(k)}</div>`).join("");
+    const firewallList = (hardening.firewall_rules || []).map(f => `<div class="dossier-code">${escapeHtml(f)}</div>`).join("");
+    const networkList = (hardening.network_measures || []).map(n => `<li>${escapeHtml(n)}</li>`).join("");
 
     modalContent.innerHTML = `
       <div class="dossier-grid">
         <!-- Box 1: What Happened -->
         <div class="dossier-box">
           <div class="dossier-box-title"><span>🚨</span> Incident Narrative &amp; Mechanics</div>
-          <p class="dossier-text">${dossier.incident_summary || action.reason || "High-confidence attack flow detected by ML ensemble."}</p>
-          ${dossier.attack_mechanics ? `<p class="dossier-text" style="margin-top:8px; font-size:12px; color:var(--text-muted)"><strong>Technical Mechanics:</strong> ${dossier.attack_mechanics}</p>` : ""}
-          ${dossier.blast_radius ? `<p class="dossier-text" style="margin-top:6px; font-size:12px; color:#FCA5A5"><strong>Blast Radius:</strong> ${dossier.blast_radius}</p>` : ""}
+          <p class="dossier-text">${escapeHtml(dossier.incident_summary || action.reason || "High-confidence attack flow detected by ML ensemble.")}</p>
+          ${dossier.attack_mechanics ? `<p class="dossier-text" style="margin-top:8px; font-size:12px; color:var(--text-muted)"><strong>Technical Mechanics:</strong> ${escapeHtml(dossier.attack_mechanics)}</p>` : ""}
+          ${dossier.blast_radius ? `<p class="dossier-text" style="margin-top:6px; font-size:12px; color:#FCA5A5"><strong>Blast Radius:</strong> ${escapeHtml(dossier.blast_radius)}</p>` : ""}
         </div>
 
         <!-- Box 2: Forensic Evidence & Fingerprint -->
         <div class="dossier-box">
           <div class="dossier-box-title"><span>🔍</span> Forensic Evidence &amp; Transport Fingerprint</div>
-          <p class="dossier-text"><strong>Socket Profile:</strong> ${forensics.socket_profile || "Empirical Socket / Transport Stream"}</p>
-          <p class="dossier-text" style="font-size:12px; color:var(--text-muted)">${forensics.stack_details || ""}</p>
+          <p class="dossier-text"><strong>Socket Profile:</strong> ${escapeHtml(forensics.socket_profile || "Empirical Socket / Transport Stream")}</p>
+          <p class="dossier-text" style="font-size:12px; color:var(--text-muted)">${escapeHtml(forensics.stack_details || "")}</p>
           ${anomaliesList ? `<ul style="margin:8px 0 0 16px; font-size:12px; color:var(--text-secondary)">${anomaliesList}</ul>` : ""}
           ${modelEvidenceList ? `<div style="margin-top:8px; font-size:11px; color:#a5b4fc"><strong>Model Consensus Evidence:</strong><ul style="margin:4px 0 0 16px;">${modelEvidenceList}</ul></div>` : ""}
         </div>
@@ -879,14 +879,14 @@
         <div class="dossier-box">
           <div class="dossier-box-title"><span>🛡️</span> Immediate Containment Action</div>
           <p class="dossier-text">Proposed firewall containment command upon operator approval:</p>
-          <div class="dossier-code" style="margin-top:8px">${containment.firewall_rule || (action.commands && action.commands[0]) || `iptables -I INPUT -s ${action.attacker_ip} -j DROP`}</div>
-          ${containment.sdn_flowmod ? `<div class="dossier-code" style="margin-top:6px; border-left-color:var(--color-info)">${containment.sdn_flowmod}</div>` : ""}
+          <div class="dossier-code" style="margin-top:8px">${escapeHtml(containment.firewall_rule || (action.commands && action.commands[0]) || `iptables -I INPUT -s ${action.attacker_ip} -j DROP`)}</div>
+          ${containment.sdn_flowmod ? `<div class="dossier-code" style="margin-top:6px; border-left-color:var(--color-info)">${escapeHtml(containment.sdn_flowmod)}</div>` : ""}
         </div>
 
         <!-- Box 4: Long-Term Prevention & Hardening -->
         <div class="dossier-box">
           <div class="dossier-box-title"><span>🔧</span> Long-Term Hardening Playbook</div>
-          <p class="dossier-text">Production measures to permanently prevent service degradation from ${action.action_type || "this attack"}:</p>
+          <p class="dossier-text">Production measures to permanently prevent service degradation from ${escapeHtml(action.action_type || "this attack")}:</p>
           ${kernelList ? `<div class="dossier-code-list"><strong>Kernel Tuning (sysctl):</strong>${kernelList}</div>` : ""}
           ${firewallList ? `<div class="dossier-code-list" style="margin-top:8px"><strong>Perimeter Rate Limiting (iptables):</strong>${firewallList}</div>` : ""}
           ${networkList ? `<ul style="margin:8px 0 0 16px; font-size:12px; color:var(--text-secondary)">${networkList}</ul>` : ""}
@@ -956,7 +956,7 @@
   const chatMessages = document.getElementById("chatMessages");
 
   function escapeHtml(str) {
-    if (!str) return "";
+    if (str === null || str === undefined) return "";
     return String(str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")

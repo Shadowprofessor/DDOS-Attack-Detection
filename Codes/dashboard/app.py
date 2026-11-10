@@ -20,6 +20,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import threading
 import random
+import re
+
+# Incident IDs become file names: allow only a strict charset (no path separators or '..').
+_SAFE_INCIDENT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 # ---------------------------------------------------------------------------
 # Security / AI / ML Imports (for real pipeline execution)
@@ -1811,7 +1815,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         json.dump(existing, f, indent=4)
 
                     # Also write individual incident file
-                    if new_id:
+                    if new_id and _SAFE_INCIDENT_ID.fullmatch(str(new_id)):
                         ind_path = os.path.join(os.path.dirname(report_path), f"incident_{new_id}.json")
                         with open(ind_path, "w", encoding="utf-8") as f:
                             json.dump(incident, f, indent=4)

@@ -43,13 +43,18 @@ def test_admin_endpoint_rejects_builtin_key_in_lab(clean_lab_env):
         assert r.status_code in (401, 403)
 
 
-def test_dev_key_printed_to_stdout_but_never_logged(capsys, caplog):
-    """Generated dev key values go to stdout for local use, NEVER into (JSON) logs."""
+def test_dev_key_written_to_file_never_stdout_or_logs(capsys, caplog, tmp_path, monkeypatch):
+    """Generated dev key values go to an owner-only local file, NEVER to stdout or (JSON) logs."""
+    key_file = tmp_path / ".dev-keys"
+    monkeypatch.setenv("DDOS_DEV_KEY_FILE", str(key_file))
     secret = "dev-UNIT-TEST-SECRET-VALUE"
-    with caplog.at_level("WARNING"):
-        svc._announce_dev_key("scoring API key", secret)
+    with caplog.at_level("DEBUG"):
+        path = svc._announce_dev_key("scoring API key", secret)
     out = capsys.readouterr().out
-    assert secret in out, "dev key should be printed to stdout for local use"
+    assert path == str(key_file)
+    assert secret in key_file.read_text(encoding="utf-8")
+    assert str(key_file) in out, "the file path is printed so the developer can find the key"
+    assert secret not in out, "dev key value must not go to stdout"
     assert secret not in caplog.text, "dev key value must never appear in log output"
 
 

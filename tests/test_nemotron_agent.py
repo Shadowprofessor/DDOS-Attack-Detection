@@ -13,6 +13,7 @@ Verifies:
 """
 import json
 import pytest
+from urllib.parse import urlparse
 from unittest.mock import MagicMock, patch
 from Codes.security.ai_threat_analyzer import (
     AIThreatAnalyzer,
@@ -687,7 +688,7 @@ def test_nvidia_nim_provider_selection(monkeypatch):
     from src.agent.nemotron_agent import NemotronAgent
     agent = NemotronAgent()
     assert agent.provider == "nvidia_nim"
-    assert "integrate.api.nvidia.com" in agent.api_url
+    assert urlparse(agent.api_url).hostname == "integrate.api.nvidia.com"
     assert agent.model == "nvidia/nemotron-3-ultra-550b-a55b"
 
 
