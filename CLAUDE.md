@@ -37,10 +37,15 @@ two AI agents.
   same-dataset**; cross-dataset generalization is M6. Never present inflated/leaky metrics without context.
 
 ## Workflow & versioning
-- **Stop after each milestone** with a summary + test results + diff; wait for approval before the next.
-- **Feature branches** (`feat/m2-nemotron`, …). Merge to `main` only after tests pass and approval.
-- **Semantic versioning per milestone** (clean history starts at **v4.0.0**): M2 = v4.1.0,
-  M3 = v4.2.0, M4 = v4.3.0, M5 = v4.4.0, M6 = v5.0.0. Each: update `CHANGELOG.md`, tag, GitHub release.
+- **After each sub-release** post a 10-line summary + test results and continue (standing approval,
+  2026-11-10). Stop and ask only if tests fail twice, a destructive action is needed, or at the
+  traffic-generation gate (v4.6.1).
+- **Feature branches** (`feat/m2-nemotron`, …). Merge to `main` only after tests + CI pass.
+- **Semantic versioning** (clean history starts at **v4.0.0**): v4.1.0 M2 analyst · v4.2.0 M3 IR
+  backend · v4.3.0 SOC app shell/auth/overview/incidents · v4.3.1 incident detail/AI/approvals/WS ·
+  v4.4.0 cross-dataset eval · v4.5.0 remaining SOC pages + full Playwright · v4.6.0 lab safety
+  layer · v4.6.1 Mininet runs + coverage · v4.7.0 hunts + STRIDE · v5.0.0 GRC + REPORT + legacy
+  removal. Each: update `CHANGELOG.md`, tag, GitHub release + SBOM.
 - **Never force-push `main` after v4.0.0.**
 - Every feature ships with a pytest; run the full suite before committing.
 
@@ -48,6 +53,6 @@ two AI agents.
 ```bash
 pip install -r requirements.txt
 python -m src.demo        # benign/attacks + low-and-slow + zero-day flag
-pytest tests/ -q          # full suite (318 passing)
+pytest tests/ -q          # full suite (473 passing, 1 skipped)
 ```
 See `README.md` → "Getting the data" for datasets/artifacts (gitignored).
