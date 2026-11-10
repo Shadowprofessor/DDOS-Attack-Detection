@@ -506,12 +506,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "GET"],
-    allow_headers=["*"],
-)
+# CORS: same-origin by default (the SOC app is served from this server). Cross-origin API
+# clients must be listed explicitly in DDOS_CORS_ORIGINS (comma-separated).
+_cors_origins = [o.strip() for o in os.environ.get("DDOS_CORS_ORIGINS", "").split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["POST", "GET"],
+        allow_headers=["X-API-Key", "X-Admin-Key", "Content-Type"],
+    )
 
 app.include_router(dashboard_router)
 
@@ -522,6 +526,12 @@ app.include_router(analyst_router)
 from src.api.ir_router import router as ir_router  # noqa: E402  M3 incident-response API
 
 app.include_router(ir_router)
+
+from src.api.session_router import router as session_router  # noqa: E402  v4.3.0 SOC web app
+from src.web import app_server as _soc_app  # noqa: E402
+
+app.include_router(session_router)
+_soc_app.install(app)
 if os.path.isdir(STATIC_DIR):
     from fastapi.staticfiles import StaticFiles
     app.mount("/dashboard/static", StaticFiles(directory=STATIC_DIR), name="dashboard_static")
