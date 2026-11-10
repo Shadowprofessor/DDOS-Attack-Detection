@@ -1,0 +1,33 @@
+# Purple-team lab scope (v4.6.0). Enforced in code by lab/safety.py, not just documented here.
+#
+# Anything outside this file is refused before a scenario is even planned:
+#   * targets must be private (RFC 1918) addresses inside `allowed_networks`;
+#   * public, loopback, link-local, multicast, reserved and IPv6 global addresses are always refused;
+#   * rate / duration / concurrency are capped;
+#   * a kill switch (file or env var) stops a running scenario within one tick;
+#   * the runner refuses to start unless it detects WSL2 + Mininet.
+#
+# v4.6.0 ships NO traffic generation: the runner is a mock that produces synthetic summaries.
+
+allowed_networks:
+  - 10.99.0.0/24          # Mininet lab hosts (h1..hN)
+
+hosts:                    # role -> lab address (must be inside allowed_networks)
+  victim: 10.99.0.10
+  attacker: 10.99.0.20
+  reflector: 10.99.0.30   # simulated reflector inside the lab (no real NTP/DNS servers)
+  client: 10.99.0.40      # benign / flash-crowd client pool base
+
+caps:
+  max_pps: 2000           # per scenario
+  max_duration_s: 120
+  max_concurrent: 1
+  tick_s: 1.0             # kill switch + caps re-checked every tick
+
+kill_switch:
+  file: lab/KILL          # create this file to stop everything
+  env: DDOS_LAB_KILL      # or set DDOS_LAB_KILL=1
+
+environment:
+  require_wsl2: true
+  require_mininet: true

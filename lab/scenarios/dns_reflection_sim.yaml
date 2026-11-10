@@ -1,0 +1,7 @@
+id: dns_reflection_sim
+name: DNS-style reflection (simulated reflector inside the lab)
+attack: true
+mitre: [T1498.002]
+description: A lab-only simulated resolver returns large UDP/53 answers to the spoofed victim address. No real resolvers are involved.
+profile: {protocol: dns_reflection, rate_pps: 800, duration_s: 60, sources: 1, source_role: reflector, dst_port: 53, packet_size: 1200}
+expected: {incident: true, family: dns_amplification, layers: [L1, L2, L3], max_mttd_s: 30}

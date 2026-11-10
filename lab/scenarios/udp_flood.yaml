@@ -1,0 +1,7 @@
+id: udp_flood
+name: UDP flood
+attack: true
+mitre: [T1498.001]
+description: High-rate UDP datagrams from lab attacker hosts toward a closed victim port.
+profile: {protocol: udp, rate_pps: 1500, duration_s: 60, sources: 20, source_role: attacker, dst_port: 9999, packet_size: 512}
+expected: {incident: true, family: udp_reflection_amplification, layers: [L1, L2, L3], max_mttd_s: 30}

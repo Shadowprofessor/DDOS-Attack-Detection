@@ -1,0 +1,7 @@
+id: http_low_and_slow
+name: HTTP low-and-slow (Slowloris-style)
+attack: true
+mitre: [T1499.002]
+description: A few lab clients hold many HTTP connections open with partial headers to starve the victim's worker pool.
+profile: {protocol: http_slow, rate_pps: 20, duration_s: 120, sources: 3, source_role: attacker, dst_port: 80, packet_size: 80, slow_connections: 150}
+expected: {incident: true, family: l7_low_and_slow, layers: [L1, L3], max_mttd_s: 90}

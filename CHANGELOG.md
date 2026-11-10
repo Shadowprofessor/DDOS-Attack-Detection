@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] — 2026-11-11
+
+### Added — purple-team lab safety layer (docs: `docs/purple_team/README.md`). No traffic generation.
+- `lab/lab_scope.yaml` + `lab/safety.py`: code-enforced scope. Allowed networks must be private,
+  at most /16, and not loopback/link-local/multicast/reserved. Every host role must be inside
+  them. Public IPv4/IPv6 and non-allowlisted private targets are refused. Rate, duration and
+  concurrency are capped. Kill switch: file, env var or `trip()`. The runner refuses to start
+  unless WSL2 **and** Mininet are detected.
+- `lab/scenarios/*.yaml` + `lab/library.py`: 8 scenarios (benign baseline, flash crowd, SYN flood,
+  UDP flood, simulated NTP and DNS reflection, HTTP low-and-slow, novel/OOD mix), each mapped to
+  ATT&CK with expected family, layers and MTTD budget. The schema forbids extra fields (no
+  commands, no raw addresses).
+- `lab/runner.py`: mock runner. Every safety check, then per-tick *descriptions* only (no
+  packets). The kill switch is re-checked before every tick. `to_aggregate()` builds a synthetic
+  aggregate for a replay-based pipeline check (documented as *not* detection evidence).
+
+### Tests
+- `tests/test_lab_safety.py` (37):
+  - public and non-allowlisted targets refused, bad scope networks rejected;
+  - caps enforced; refuses to start outside the lab;
+  - kill switch stops a running scenario within one tick and blocks start (file + env);
+  - scenario validation, mock pipeline wiring;
+  - **AST scan: `lab/` contains no networking/process code**.
+
 ## [4.5.0] — 2026-11-11
 
 ### Added — SOC web app, part 3 (docs: `docs/SOC_APP.md`)

@@ -1,0 +1,7 @@
+id: novel_ood_mix
+name: Novel / out-of-distribution mix
+attack: true
+mitre: [T1498]
+description: An unusual mix of protocols and sizes not seen in training, to test the OOD signal and the zero-day playbook.
+profile: {protocol: mixed, rate_pps: 1200, duration_s: 60, sources: 30, source_role: attacker, packet_size: 900}
+expected: {incident: true, family: zero_day_ood, layers: [OOD, L3], max_mttd_s: 60}
