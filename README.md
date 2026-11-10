@@ -170,7 +170,7 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 
 ---
 
-## 🖥️ SOC Web App (v4.3.0)
+## 🖥️ SOC Web App (v4.3 – v4.5)
 
 A React SOC console served at **`/app`**: login, an overview with KPIs and CERT-In countdowns,
 and a filterable incident list. It uses an HttpOnly session cookie, CSRF tokens and a strict CSP
@@ -179,6 +179,16 @@ with no inline script or style. Server text always renders as text.
 ```bash
 cd dashboard && npm ci && npm run build   # then open http://localhost:8000/app
 ```
+
+Pages: overview, incidents, incident detail (AI recommendation panel, playbooks, timeline,
+MD/PDF export), approvals (admin), live feed, replay, AI analyst chat (read-only), and
+settings/health. Every page passes axe-core with 0 serious/critical issues and fits a 375 px screen.
+
+| Overview | Incident detail |
+|---|---|
+| ![Overview](docs/img/overview.png) | ![Incident detail](docs/img/incident-detail.png) |
+| **Approvals (admin)** | **Live feed** |
+| ![Approvals](docs/img/approvals.png) | ![Live feed](docs/img/live-feed.png) |
 
 Details and the security model: [`docs/SOC_APP.md`](docs/SOC_APP.md).
 

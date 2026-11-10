@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] — 2026-11-11
+
+### Added — SOC web app, part 3 (docs: `docs/SOC_APP.md`)
+- **Live feed** page: `/ws/dashboard` stream over the session cookie (same-origin), with
+  filters, pause/resume and a windowed list (2,000 events kept).
+- **Replay** page (scenario + speed → replay incident, stages shown, dry-run proposals only).
+- **AI analyst** chat page (read-only `/api/chat`, optional incident scope, provenance shown).
+- **Settings & health** page + `GET /api/system` (versions, model artifacts, analyst config with
+  key presence only, IR settings).
+- Legacy dashboard served at `/legacy` too. Both URLs send `Deprecation` / `Link` /
+  `Warning` headers. Removal is in v5.0.0.
+- README screenshots in `docs/img/`, captured by an opt-in Playwright spec.
+
+### Changed
+- `/api/chat`, the legacy dashboard JSON endpoints and `/api/analyst/config` accept the web-app
+  session (CSRF on POST). `/ws/dashboard` accepts a same-origin session cookie. The cookie check
+  is shared with `/ws/incidents` via `rbac.ws_session_key`.
+- Scored-flow broadcasts now include `src_ip` / `dst_ip`. Without them the feed could not show
+  who was talking to whom.
+
+### Fixed
+- Long incident titles in a dropdown widened the AI analyst page past a 375 px screen. Stat
+  cards on the overview were vertically misaligned.
+
+### Tests
+- pytest `tests/test_soc_pages.py` (7): session chat + CSRF, analyst config via session,
+  `/api/system` has no secrets, legacy deprecation headers, `/ws/dashboard` cookie auth +
+  cross-origin rejection.
+- Vitest 23 (+3). Playwright 21 (+8): **axe-core 0 serious/critical on every page**, no CSP
+  violations, 375 px on every page, reduced motion, live feed receives a scored flow, replay,
+  chat refuses to act, settings shows no secrets, legacy deprecation.
+
 ## [4.4.0] — 2026-11-11
 
 ### Added — cross-dataset evaluation (docs: `docs/eval/cross_dataset.md`)

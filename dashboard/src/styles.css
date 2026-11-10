@@ -156,3 +156,27 @@ a.btn { text-decoration: none; display: inline-block; }
 .dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; width: min(520px, calc(100vw - 2rem)); }
 .dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .dialog h2 { color: var(--text); }
+
+/* v4.5.0: live feed, chat */
+.feed { height: 60vh; min-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); position: relative; }
+.feed-inner { position: relative; }
+.feed-row { height: 36px; display: grid; grid-template-columns: 5.5rem 5.5rem minmax(0, 2fr) minmax(0, 1.5fr) 3rem; gap: 0.5rem; align-items: center; padding: 0 0.75rem; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; }
+.feed-row > * { overflow: hidden; text-overflow: ellipsis; }
+.feed-row.attack { background: rgb(255 186 8 / 0.06); }
+.kind { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); }
+.kind-alert, .kind-dropped { color: var(--amber); }
+.kind-campaign { color: var(--violet); }
+.pad { padding: 1rem; }
+.topbar nav { flex-wrap: wrap; }
+.turns { list-style: none; padding: 0; margin: 0 0 0.75rem; display: grid; gap: 0.6rem; max-height: 50vh; overflow-y: auto; }
+.turn p { margin: 0.15rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.turn-you p { color: var(--cyan); }
+@media (max-width: 480px) {
+  .feed-row { grid-template-columns: 4.5rem minmax(0, 1fr) minmax(0, 1fr); }
+  .feed-row > :nth-child(2), .feed-row > :nth-child(5) { display: none; }
+}
+/* form controls never push the page wider than the viewport */
+.field, .filters label { min-width: 0; max-width: 100%; }
+.field select, .field input, .filters select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
+/* grid cells align; vertical spacing only between stacked (non-grid) cards */
+.grid > .card + .card { margin-top: 0; }

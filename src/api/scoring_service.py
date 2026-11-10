@@ -1060,6 +1060,8 @@ async def score_flow(
         seq_info = (breakdown or {}).get("sequence_classifier") or {}
         caveat_text = seq_info.get("caveat") if seq_info.get("active") else None
         get_broadcaster().enqueue_flow({
+            "src_ip": attacker_ip,
+            "dst_ip": victim_ip,
             "label": label,
             "confidence": confidence,
             "is_attack": is_attack,
