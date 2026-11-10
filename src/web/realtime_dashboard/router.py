@@ -93,18 +93,34 @@ async def get_campaigns():
     }
 
 
-@router.post("/api/chat", dependencies=[Depends(_require_api_key)])
-async def chat_with_soc_assistant(request: Request):
+# v4.7.0 bug hunt: each chat message may be an LLM call; unlimited chat = unbounded cost / DoS.
+_CHAT_RATE_PER_MIN = int(os.environ.get("DDOS_CHAT_RATE_PER_MIN", "20"))
+_chat_limiter = None
+
+
+def _get_chat_limiter():
+    global _chat_limiter
+    if _chat_limiter is None:
+        from src.api.analyst_router import _KeyRateLimiter
+        _chat_limiter = _KeyRateLimiter(_CHAT_RATE_PER_MIN)
+    return _chat_limiter
+
+
+@router.post("/api/chat")
+async def chat_with_soc_assistant(request: Request, key: str = Depends(_require_api_key)):
     """
     Read-only advisory chat endpoint.
     Answers operator questions grounded in live telemetry via Nemotron 3 Ultra.
     ZERO execution authority — cannot approve or execute mitigation actions.
     """
+    import hashlib
+    if not _get_chat_limiter().allow(hashlib.sha256(key.encode("utf-8")).hexdigest()):
+        raise HTTPException(status_code=429, detail="Chat rate limit exceeded; retry later.")
     try:
         body = await request.json()
     except Exception:
         body = {}
-    message = body.get("message", "")
+    message = str(body.get("message", ""))[:2000] if isinstance(body, dict) else ""
     from src.agent.soc_chat_assistant import get_soc_chat_assistant
     assistant = get_soc_chat_assistant()
     return assistant.answer_query(message)

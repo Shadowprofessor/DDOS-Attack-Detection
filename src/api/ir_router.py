@@ -31,6 +31,20 @@ router = APIRouter(tags=["incident-response"])
 ID_PATTERN = r"^[A-Za-z0-9_.:-]{1,64}$"
 
 
+import os  # noqa: E402
+
+from src.api.analyst_router import _KeyRateLimiter  # noqa: E402
+
+# v4.7.0 bug hunt: IR writes were unlimited, so a leaked analyst key could flood the incident DB.
+ir_write_limiter = _KeyRateLimiter(int(os.environ.get("DDOS_IR_WRITE_RATE_PER_MIN", "120")))
+
+
+def require_analyst_write(p: Principal = Depends(require_analyst)) -> Principal:
+    if not ir_write_limiter.allow(p.actor):
+        raise HTTPException(status_code=429, detail="Write rate limit exceeded; retry later.")
+    return p
+
+
 def _fail(e: Exception) -> HTTPException:
     """Map domain errors to HTTP. Messages are our own (no stack traces / internals)."""
     if isinstance(e, PermissionError):
@@ -111,7 +125,7 @@ def list_incidents(status: Optional[Literal[STATES]] = None,  # type: ignore[val
 
 
 @router.post("/api/incidents", status_code=201)
-def create_incident(body: IncidentCreate, p: Principal = Depends(require_analyst)):
+def create_incident(body: IncidentCreate, p: Principal = Depends(require_analyst_write)):
     try:
         return get_ir_runtime().service.create_incident(
             title=body.title, severity=body.severity, actor=p.actor, attack_family=body.attack_family,
@@ -134,7 +148,7 @@ def get_incident(incident_id: str = Path(..., pattern=ID_PATTERN), p: Principal 
 
 @router.post("/api/incidents/{incident_id}/transition")
 def transition_incident(body: TransitionBody, incident_id: str = Path(..., pattern=ID_PATTERN),
-                        p: Principal = Depends(require_analyst)):
+                        p: Principal = Depends(require_analyst_write)):
     if body.to not in ANALYST_TRANSITIONS and not p.has("admin"):
         raise HTTPException(status_code=403, detail=f"Insufficient privileges: '{body.to}' requires admin.")
     try:
@@ -146,7 +160,7 @@ def transition_incident(body: TransitionBody, incident_id: str = Path(..., patte
 
 @router.post("/api/incidents/{incident_id}/notes", status_code=201)
 def add_note(body: NoteBody, incident_id: str = Path(..., pattern=ID_PATTERN),
-             p: Principal = Depends(require_analyst)):
+             p: Principal = Depends(require_analyst_write)):
     try:
         return get_ir_runtime().service.add_note(incident_id, p.actor, body.text)
     except Exception as e:
@@ -155,7 +169,7 @@ def add_note(body: NoteBody, incident_id: str = Path(..., pattern=ID_PATTERN),
 
 @router.post("/api/incidents/{incident_id}/actions", status_code=201)
 def link_action(body: LinkBody, incident_id: str = Path(..., pattern=ID_PATTERN),
-                p: Principal = Depends(require_analyst)):
+                p: Principal = Depends(require_analyst_write)):
     """Attach an existing proposed action (e.g. from /score/flow) to an incident."""
     try:
         return get_ir_runtime().service.link_action(incident_id, body.action_id, p.actor, ttl_s=body.ttl_s)
@@ -168,7 +182,7 @@ def run_playbook_step(body: Optional[StepBody] = None,
                       incident_id: str = Path(..., pattern=ID_PATTERN),
                       playbook_id: str = Path(..., pattern=r"^[a-z0-9_]{1,64}$"),
                       step_id: str = Path(..., pattern=r"^[a-z0-9_]{1,64}$"),
-                      p: Principal = Depends(require_analyst)):
+                      p: Principal = Depends(require_analyst_write)):
     rt = get_ir_runtime()
     pb = rt.playbooks.get(playbook_id)
     if pb is None:
@@ -230,7 +244,7 @@ def list_playbooks(p: Principal = Depends(require_analyst)):
 
 
 @router.post("/api/replay", status_code=201)
-def replay(body: ReplayBody, p: Principal = Depends(require_analyst)):
+def replay(body: ReplayBody, p: Principal = Depends(require_analyst_write)):
     from src.ir.replay import list_scenarios, load_scenario
 
     rt = get_ir_runtime()
@@ -274,7 +288,7 @@ def extend_rollback(body: ExtendBody, action_id: str = Path(..., pattern=ID_PATT
 
 # ----------------------------------------------------------------------------- analysis / approvals
 @router.post("/api/incidents/{incident_id}/analyze")
-def analyze_incident(incident_id: str = Path(..., pattern=ID_PATTERN), p: Principal = Depends(require_analyst)):
+def analyze_incident(incident_id: str = Path(..., pattern=ID_PATTERN), p: Principal = Depends(require_analyst_write)):
     """Run the Layer-3 analyst on the incident's stored aggregate. Recommendation only: the result
     is stored on the incident; nothing is proposed or executed. Replays always use the rule analyst."""
     from src.api.analyst_router import analyst_rate_limiter
