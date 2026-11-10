@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 import logging
 import re
 import threading

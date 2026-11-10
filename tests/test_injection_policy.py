@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from src.agent.injection_eval import (BENIGN_CORE, EXPECTED_ID, FOREIGN_IPS, HELDOUT_PAYLOADS, PAYLOADS,
+from src.agent.injection_eval import (EXPECTED_ID, FOREIGN_IPS, HELDOUT_PAYLOADS, PAYLOADS,
                                       base_incident, detector_report)
 from src.agent.llm_client import LLMClient, LLMConfig
 from src.agent.threat_analyst import CANARY, ThreatAnalyst

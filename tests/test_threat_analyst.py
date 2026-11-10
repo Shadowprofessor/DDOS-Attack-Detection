@@ -3,7 +3,6 @@
 M2 Layer-3 threat analyst tests. All LLM calls use a mocked transport (no key / network);
 the single live test skips without NVIDIA_API_KEY.
 """
-import copy
 import json
 import os
 import time
@@ -13,7 +12,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from src.agent.llm_client import LLMClient, LLMConfig, LLMUnavailable
-from src.agent.sanitize import IpHasher, build_telemetry_block, count_instruction_like, sanitize_text
+from src.agent.sanitize import build_telemetry_block, count_instruction_like, sanitize_text
 from src.agent.schemas import IncidentAggregate, IncidentAnalysis
 from src.agent.threat_analyst import CANARY, ThreatAnalyst, build_tool, enforce_policy, rule_based_analysis
 
@@ -264,7 +263,7 @@ def test_rule_based_classification(over, expect):
 @pytest.fixture
 def api(monkeypatch):
     from src.api import scoring_service as svc
-    import src.agent.threat_analyst as ta
+    from src.agent import threat_analyst as ta
     from src.api import analyst_router
 
     monkeypatch.setenv("DDOS_API_KEYS", KEY)

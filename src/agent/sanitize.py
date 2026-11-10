@@ -25,10 +25,17 @@ import secrets
 from typing import Any, Dict, Optional, Tuple
 
 # C0/C1 controls (except \t \n), zero-width chars, BOM, bidi embeddings/overrides/isolates.
-_INVISIBLE_RE = re.compile(
-    "[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f"
-    "\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]"
-)
+_INVISIBLE_CODEPOINTS = [
+    *range(0x00, 0x09), 0x0B, 0x0C, *range(0x0E, 0x20), *range(0x7F, 0xA0),
+    *range(0x200B, 0x2010), *range(0x202A, 0x202F), *range(0x2060, 0x2065),
+    *range(0x2066, 0x206A), 0xFEFF,
+]
+_INVISIBLE_TABLE = dict.fromkeys(_INVISIBLE_CODEPOINTS)  # str.translate: None = delete
+
+
+def strip_invisible(text: str) -> str:
+    """Remove control, zero-width and bidi-override characters."""
+    return text.translate(_INVISIBLE_TABLE)
 _WS_RE = re.compile(r"\s+")
 IPV4_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b")
 
@@ -102,7 +109,7 @@ def count_instruction_like(text: str) -> int:
         return 0
     count = 0
     for variant in [text, *_decoded_variants(text)]:
-        nfkc = _INVISIBLE_RE.sub("", unicodedata.normalize("NFKC", variant))
+        nfkc = strip_invisible(unicodedata.normalize("NFKC", variant))
         spaced = _WS_RE.sub(" ", _SEPARATORS_RE.sub(" ", nfkc))
         count += max(len(_INSTRUCTION_RE.findall(nfkc)), len(_INSTRUCTION_RE.findall(spaced)))
     return count
@@ -111,7 +118,7 @@ def count_instruction_like(text: str) -> int:
 def sanitize_text(value: Any, max_len: int = DEFAULT_MAX_STR) -> str:
     """Neutralise one untrusted string for safe inclusion in a prompt."""
     s = str(value)
-    s = _INVISIBLE_RE.sub("", s)
+    s = strip_invisible(s)
     s = s.replace("<", "‹").replace(">", "›")  # ‹ › — cannot form tags
     s = _WS_RE.sub(" ", s).strip()
     if len(s) > max_len:
