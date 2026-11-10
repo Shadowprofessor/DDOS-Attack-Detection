@@ -77,9 +77,11 @@ def list_scenarios(directory: Path = SCENARIO_DIR) -> List[str]:
 
 
 def load_scenario(name: str, directory: Path = SCENARIO_DIR) -> IncidentAggregate:
-    if name not in list_scenarios(directory):  # allowlist: no path traversal
+    # Allowlist: the path read is one the server enumerated itself, never built from `name`.
+    matches = [p for p in sorted(Path(directory).glob("*.json")) if p.stem == name]
+    if not matches:
         raise KeyError(name)
-    data = json.loads((Path(directory) / f"{name}.json").read_text(encoding="utf-8"))
+    data = json.loads(matches[0].read_text(encoding="utf-8"))
     return IncidentAggregate.model_validate(data)
 
 

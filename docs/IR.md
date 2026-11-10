@@ -41,7 +41,7 @@ playbooks `playbooks/*.yaml`, replay scenarios `replay/scenarios/*.json`.
 
 Keys map to roles: `DDOS_API_KEYS` → **analyst**, `DDOS_ADMIN_KEYS` → **admin** (admin ⊇ analyst).
 No/unknown key → **401**; known key, too little privilege → **403**. Actors are recorded as
-`<role>:<sha256(key)[:8]>`, so no key material reaches timelines or exports.
+`<role>:<pbkdf2(key)[:8]>`, so no key material reaches timelines or exports.
 
 | Endpoint | analyst | admin |
 |---|:-:|:-:|

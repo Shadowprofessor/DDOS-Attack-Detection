@@ -6,12 +6,13 @@ Role-based access for the IR API. Deny by default.
 * `DDOS_ADMIN_KEYS` -> role `admin` (superset of analyst)
 
 Missing/unknown key -> 401. Known key with too little privilege -> 403.
-Actors are recorded as `<role>:<sha256(key)[:8]>` so no key material lands in timelines/exports.
+Actors are recorded as `<role>:<pbkdf2(key)[:8]>` so no key material lands in timelines/exports.
 """
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
@@ -51,7 +52,13 @@ def principal_for_key(key: Optional[str]) -> Optional[Principal]:
     role = role_for_key(key)
     if role is None:
         return None
-    return Principal(role=role, fingerprint=hashlib.sha256(key.encode("utf-8")).hexdigest()[:8])
+    return Principal(role=role, fingerprint=key_fingerprint(key))
+
+
+@lru_cache(maxsize=256)
+def key_fingerprint(key: str) -> str:
+    """Stable, non-reversible 8-hex-char actor id for a key (PBKDF2, cached per key)."""
+    return hashlib.pbkdf2_hmac("sha256", key.encode("utf-8"), b"ddos-actor-fingerprint-v1", 100_000).hex()[:8]
 
 
 def current_principal(request: Request) -> Principal:
