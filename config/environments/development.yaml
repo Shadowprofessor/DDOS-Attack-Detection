@@ -64,3 +64,19 @@ analyst:
   hash_ips: "${DDOS_LLM_HASH_IPS:-false}"
   price_in_per_1m: "${DDOS_LLM_PRICE_IN_PER_1M:-0}"
   price_out_per_1m: "${DDOS_LLM_PRICE_OUT_PER_1M:-0}"
+
+# Incident response (M3, v4.2.0). See docs/IR.md.
+ir:
+  database_url: "${DDOS_IR_DATABASE_URL:-sqlite:///data/ir.db}"
+  rollback_ttl_s: "${DDOS_IR_ROLLBACK_TTL:-600}"      # approved blocks auto-revert after this
+  rollback_max_attempts: 5
+  rollback_backoff_s: 10
+  scheduler_interval_s: 5
+  cert_in:
+    severity_threshold: "${DDOS_CERTIN_SEVERITY:-4}"  # incidents >= this get the 6 h timer
+    deadline_hours: 6
+    hash_iocs: "${DDOS_CERTIN_HASH_IOCS:-false}"
+    org_name: "${DDOS_CERTIN_ORG:-<organisation name>}"
+    contact_name: "${DDOS_CERTIN_CONTACT_NAME:-<point of contact>}"
+    contact_email: "${DDOS_CERTIN_CONTACT_EMAIL:-<contact email>}"
+    contact_phone: "${DDOS_CERTIN_CONTACT_PHONE:-<contact phone>}"

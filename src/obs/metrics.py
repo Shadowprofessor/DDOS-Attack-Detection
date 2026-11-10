@@ -57,6 +57,36 @@ class Gauge(_Metric):
         with _LOCK:
             self.samples[k] = float(value)
 
+    def remove(self, **labels: str) -> None:
+        with _LOCK:
+            self.samples.pop(self._key(labels), None)
+
+
+class Histogram(_Metric):
+    """Cumulative-bucket histogram (Prometheus semantics), no labels."""
+
+    def __init__(self, name: str, help_text: str, buckets: Tuple[float, ...]):
+        super().__init__(name, help_text, "histogram")
+        self.buckets = tuple(sorted(buckets))
+        self.counts = [0] * len(self.buckets)
+        self.total = 0.0
+        self.n = 0
+
+    def observe(self, value: float) -> None:
+        with _LOCK:
+            for i, b in enumerate(self.buckets):
+                if value <= b:
+                    self.counts[i] += 1
+            self.total += float(value)
+            self.n += 1
+
+    def lines(self) -> list:
+        out = [f'{self.name}_bucket{{le="{b:g}"}} {c}' for b, c in zip(self.buckets, self.counts)]
+        out.append(f'{self.name}_bucket{{le="+Inf"}} {self.n}')
+        out.append(f"{self.name}_sum {self.total}")
+        out.append(f"{self.name}_count {self.n}")
+        return out
+
 
 class Registry:
     def __init__(self) -> None:
@@ -76,12 +106,22 @@ class Registry:
             self._metrics[name] = m
         return m  # type: ignore[return-value]
 
+    def histogram(self, name: str, help_text: str, buckets: Tuple[float, ...]) -> Histogram:
+        m = self._metrics.get(name)
+        if m is None:
+            m = Histogram(name, help_text, buckets)
+            self._metrics[name] = m
+        return m  # type: ignore[return-value]
+
     def render(self) -> str:
         lines = []
         with _LOCK:
             for m in self._metrics.values():
                 lines.append(f"# HELP {m.name} {m.help}")
                 lines.append(f"# TYPE {m.name} {m.type}")
+                if isinstance(m, Histogram):
+                    lines.extend(m.lines())
+                    continue
                 if not m.samples:
                     lines.append(f"{m.name} 0")
                     continue
@@ -108,6 +148,14 @@ ANALYST_CACHE = REGISTRY.counter("ddos_analyst_cache_total", "Analyst cache look
 ANALYST_FALLBACK = REGISTRY.counter("ddos_analyst_fallback_total", "Rule-based fallbacks by reason.")
 ANALYST_POLICY = REGISTRY.counter("ddos_analyst_policy_violations_total", "Output-policy corrections by kind.")
 ANALYST_SUSPICIOUS = REGISTRY.counter("ddos_analyst_suspicious_telemetry_total", "Instruction-like strings seen in telemetry.")
+
+# Incident response (M3)
+_IR_BUCKETS = (10, 30, 60, 120, 300, 600, 1800, 3600, 21600)
+INCIDENTS_BY_STATE = REGISTRY.gauge("ddos_incidents", "Incidents by lifecycle state (excludes replays).")
+INCIDENT_MTTD = REGISTRY.histogram("ddos_incident_mttd_seconds", "Time from attack window start to detection.", _IR_BUCKETS)
+INCIDENT_MTTC = REGISTRY.histogram("ddos_incident_mttc_seconds", "Time from detection to containment.", _IR_BUCKETS)
+ROLLBACKS = REGISTRY.counter("ddos_rollbacks_total", "Auto-rollbacks of approved blocks, by result.")
+CERT_IN_REMAINING = REGISTRY.gauge("ddos_cert_in_seconds_remaining", "Seconds left before the CERT-In 6 h reporting deadline.")
 
 
 def render_latest() -> str:

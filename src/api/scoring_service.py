@@ -170,9 +170,20 @@ async def lifespan(app: FastAPI):
             "======================================================================",
             _generated_dev_admin_key,
         )
+    ir_rt = None
+    if os.environ.get("DDOS_IR_SCHEDULER", "on").strip().lower() not in ("0", "off", "false", "no"):
+        try:
+            from src.ir.runtime import get_ir_runtime
+            ir_rt = get_ir_runtime()
+            ir_rt.start()  # auto-rollback + CERT-In timers
+        except Exception as e:  # IR must never take the scoring path down
+            logger.error("Incident-response scheduler failed to start: %s", log_safe(type(e).__name__))
+            ir_rt = None
     try:
         yield
     finally:
+        if ir_rt is not None:
+            ir_rt.stop()
         await get_broadcaster().stop()
 
 class ModelRegistry:
@@ -507,6 +518,10 @@ app.include_router(dashboard_router)
 from src.api.analyst_router import router as analyst_router  # noqa: E402  Layer-3 analyst API
 
 app.include_router(analyst_router)
+
+from src.api.ir_router import router as ir_router  # noqa: E402  M3 incident-response API
+
+app.include_router(ir_router)
 if os.path.isdir(STATIC_DIR):
     from fastapi.staticfiles import StaticFiles
     app.mount("/dashboard/static", StaticFiles(directory=STATIC_DIR), name="dashboard_static")

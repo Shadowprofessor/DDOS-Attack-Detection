@@ -1,0 +1,22 @@
+id: dns_amplification
+name: DNS amplification
+version: "1.0"
+attack_families: [dns_amplification]
+mitre: [T1498.002]
+steps:
+  - id: inspect_qnames
+    title: Inspect top query names and response sizes (ANY / large TXT / DNSSEC)
+    kind: check
+  - id: check_open_resolvers
+    title: Confirm none of our resolvers answer recursive queries from the internet
+    kind: check
+  - id: block_top_resolver_source
+    title: Request a block of the top abusing resolver source
+    kind: propose_action
+    action: {action_type: BLOCK, target: top_src_ip, reason: "DNS amplification: block top resolver source", ttl_s: 600}
+  - id: notify_dns_team
+    title: Notify the DNS team and upstream provider
+    kind: notify
+  - id: record_root_cause
+    title: Record qnames, resolvers and impact
+    kind: document

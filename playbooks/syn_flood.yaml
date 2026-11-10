@@ -1,0 +1,24 @@
+id: syn_flood
+name: TCP SYN flood
+version: "1.0"
+attack_families: [syn_flood]
+mitre: [T1499.001, T1498.001]
+steps:
+  - id: confirm_syn_ratio
+    title: Confirm SYN ratio and half-open connection growth on the victim
+    kind: check
+    description: SYN share of TCP packets > 0.7 and SYN_RECV backlog rising; rule out a flash crowd.
+  - id: enable_syn_cookies
+    title: Verify SYN cookies / SYN proxy are enabled on the victim edge
+    kind: check
+  - id: rate_limit_top_source
+    title: Request a rate limit for the top source toward the victim
+    kind: propose_action
+    action: {action_type: RATE_LIMIT, target: top_src_ip, reason: "SYN flood: rate-limit top source", ttl_s: 600}
+  - id: notify_noc
+    title: Notify NOC / upstream provider with source and volume summary
+    kind: notify
+  - id: record_root_cause
+    title: Record vector, sources, impact and lessons learned
+    kind: document
+    requires_role: admin

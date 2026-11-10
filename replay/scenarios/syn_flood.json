@@ -1,0 +1,27 @@
+{
+  "incident_id": "replay-syn-flood-001",
+  "window_start": 1762761600.0,
+  "window_seconds": 60,
+  "pps": 250000.0,
+  "bps": 160000000.0,
+  "flow_count": 48000,
+  "unique_src_ips": 1200,
+  "src_ip_entropy": 9.1,
+  "top_src_ips": [
+    {"key": "10.10.0.21", "share": 0.08},
+    {"key": "10.10.0.37", "share": 0.06},
+    {"key": "10.10.0.52", "share": 0.05}
+  ],
+  "dst_ips": ["10.0.0.4"],
+  "dst_ports": [{"key": "443", "share": 0.97}],
+  "protocol_mix": {"tcp": 0.98, "udp": 0.01, "icmp": 0.01},
+  "tcp_flag_ratios": {"syn": 0.93, "ack": 0.04},
+  "packet_size_p50": 60.0,
+  "packet_size_p95": 74.0,
+  "ml": {"label": "Syn", "confidence": 0.97, "ood_score": 0.04},
+  "alert_history": [
+    {"ts": 1762761605.0, "layer": "L1", "rule": "threshold_pps", "detail": "pps above baseline"},
+    {"ts": 1762761612.0, "layer": "L1", "rule": "syn_ratio", "detail": "SYN ratio 0.93"},
+    {"ts": 1762761620.0, "layer": "L2", "rule": "ensemble_attack", "detail": "Syn 0.97"}
+  ]
+}
