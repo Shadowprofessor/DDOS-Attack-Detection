@@ -32,7 +32,8 @@ export default defineConfig({
       DDOS_IR_DATABASE_URL: `sqlite:///${join(work, "ir.db").replace(/\\/g, "/")}`,
       DDOS_PENDING_ACTIONS_PATH: join(work, "actions.json"),
       DDOS_DEV_KEY_FILE: join(work, ".dev-keys"),
-      DDOS_IR_SCHEDULER: "off",
+      // scheduler ON: approved blocks get a real rollback countdown (default TTL 600 s)
+      DDOS_IR_SCHEDULER: "on",
       DDOS_LOGIN_RATE_PER_MIN: "100",
       NVIDIA_API_KEY: "",
     },

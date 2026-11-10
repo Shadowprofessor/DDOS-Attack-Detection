@@ -71,7 +71,7 @@ export function OverviewPage() {
             <ul className="timers">
               {o.cert_in_timers.map((t) => (
                 <li key={t.incident_id} className={t.seconds_remaining < 900 ? "timer urgent" : "timer"}>
-                  <Link to={`/incidents?focus=${encodeURIComponent(t.incident_id)}`}>{t.incident_id}</Link>
+                  <Link to={`/incidents/${encodeURIComponent(t.incident_id)}`}>{t.incident_id}</Link>
                   <span className="muted">{t.title}</span>
                   <span className="countdown">{formatDuration(t.seconds_remaining)}</span>
                 </li>
@@ -88,7 +88,7 @@ export function OverviewPage() {
             {o.incidents.recent.map((i) => (
               <li key={i.id}>
                 <SeverityBadge severity={i.severity} />
-                <span className="mono">{i.id}</span>
+                <Link className="mono" to={`/incidents/${encodeURIComponent(i.id)}`}>{i.id}</Link>
                 <span>{i.title}</span>
                 <span className="muted small">{formatTime(i.detected_at)}</span>
               </li>
