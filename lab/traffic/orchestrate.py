@@ -95,23 +95,43 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0) -> li
 
 
 def containment_test(net, hosts, scope, uplink: str) -> dict:  # pragma: no cover - needs root
-    """With a NAT path out of the lab deliberately open, prove nftables drops lab egress."""
+    """With a NAT path out of the lab deliberately open, prove nftables drops lab egress.
+
+    Verdict is three-valued: "contained" needs the probe to REACH the lab boundary (seen on the
+    NAT's lab-side interface), the nftables drop counter to rise, and nothing on the uplink.
+    If the probe never reaches the boundary, the result is "inconclusive", never a pass."""
     nft_file = REPO / "lab" / "traffic" / "containment.nft"
     nat = net.get("nat0")
     h = hosts["client"]
+    diag = {
+        "ping_binary": h.cmd("command -v ping || echo MISSING").strip(),
+        "client_routes": h.cmd("ip route").strip().splitlines(),
+        "lab_ping_victim": "1 received" in h.cmd(f"ping -c 1 -W 1 {scope.hosts['victim']}"),
+        "lab_ping_nat_gw": "1 received" in h.cmd("ping -c 1 -W 1 10.99.0.254"),
+    }
     subprocess.run(["nft", "-f", str(nft_file)], check=True)  # list args: spaces in path are safe
     before = _drop_count()
+    boundary = nat.popen(["tcpdump", "-i", "nat0-eth0", "-n", "-l", f"host {TEST_NET}"])
     cap = nat.popen(["tcpdump", "-i", uplink, "-n", "-l", f"host {TEST_NET}"])
-    time.sleep(1.0)
-    h.cmd(f"ping -c 3 -W 1 {TEST_NET}")
+    time.sleep(1.5)
+    diag["probe_output"] = h.cmd(f"ping -c 3 -W 1 {TEST_NET}").strip().splitlines()[-2:]
     time.sleep(2.0)
-    cap.terminate()
-    out, _ = cap.communicate(timeout=5)
-    seen = len([ln for ln in (out or b"").decode(errors="ignore").splitlines() if TEST_NET in ln])
+    seen = {}
+    for name, proc in (("boundary", boundary), ("uplink", cap)):
+        proc.terminate()
+        out, _ = proc.communicate(timeout=5)
+        seen[name] = len([ln for ln in (out or b"").decode(errors="ignore").splitlines() if TEST_NET in ln])
     after = _drop_count()
     subprocess.run(["nft", "delete", "table", "inet", NFT_TABLE], check=False)
-    return {"probe": TEST_NET, "drops_before": before, "drops_after": after,
-            "uplink": uplink, "packets_seen_on_uplink": seen, "contained": after > before and seen == 0}
+    if seen["boundary"] == 0:
+        verdict = "inconclusive: probe never reached the lab boundary"
+    elif after > before and seen["uplink"] == 0:
+        verdict = "contained"
+    else:
+        verdict = "NOT contained"
+    return {"probe": TEST_NET, "drops_before": before, "drops_after": after, "uplink": uplink,
+            "packets_seen_at_boundary": seen["boundary"], "packets_seen_on_uplink": seen["uplink"],
+            "contained": verdict == "contained", "verdict": verdict, "diagnostics": diag}
 
 
 def _drop_count() -> int:  # pragma: no cover

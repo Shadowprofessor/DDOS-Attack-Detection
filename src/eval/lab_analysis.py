@@ -174,7 +174,7 @@ def coverage_markdown(results: List[dict], containment: Optional[dict]) -> str:
         rows += ["", f"Containment probe to {containment['probe']} (TEST-NET-1) with a NAT path deliberately open: "
                  f"nftables drops {containment['drops_before']} → {containment['drops_after']}, packets seen on "
                  f"`{containment['uplink']}`: {containment['packets_seen_on_uplink']} → **"
-                 f"{'contained' if containment['contained'] else 'NOT CONTAINED'}**."]
+                 f"{containment.get('verdict') or ('contained' if containment['contained'] else 'NOT CONTAINED')}**."]
     return "\n".join(rows) + "\n"
 
 
