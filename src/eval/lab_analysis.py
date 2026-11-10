@@ -52,8 +52,12 @@ def build_aggregate(sid: str, flows: List[dict], t0: float, window_s: float) -> 
     tcp_pk = proto.get("tcp", 0) or 1
     sizes = sorted(f["bytes"] / max(1, f["packets"]) for f in flows)
     w = max(1.0, window_s)
+    http = [f for f in flows if f["dport"] in (80, 443)]
+    slow = [f for f in http if (f["end"] - f["start"]) >= 10.0
+            and f.get("fwd_bytes", f["bytes"]) / max(1e-6, f["end"] - f["start"]) <= 50.0]  # LowSlowDetector rule
+    l7 = {"http_rps": round(len(http) / w, 3), "slow_connections": len(slow)} if http else None
     return {
-        "incident_id": f"lab-{sid}", "window_start": t0, "window_seconds": int(min(3600, max(1, w))),
+        "incident_id": f"lab-{sid}", "window_start": t0, "window_seconds": int(min(3600, max(1, w))), "l7": l7,
         "pps": pk / w, "bps": sum(f["bytes"] for f in flows) * 8 / w, "flow_count": len(flows),
         "unique_src_ips": len(by_src), "src_ip_entropy": round(_entropy(by_src), 3),
         "top_src_ips": [{"key": k, "share": round(v / pk, 4)} for k, v in by_src.most_common(10)],
@@ -65,15 +69,25 @@ def build_aggregate(sid: str, flows: List[dict], t0: float, window_s: float) -> 
     }
 
 
-def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer) -> dict:
-    """flows: dicts with src,dst,proto,dport,packets,bytes,syn,start,end,features."""
+ML_SAMPLE = 1500  # ML/OOD scored on at most this many flows per scenario (evenly spaced in time)
+
+
+def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer, ml_sample: int = ML_SAMPLE) -> dict:
+    """flows: dicts with src,dst,proto,dport,packets,bytes,syn,start,end,features.
+
+    L1 runs on every flow (cheap, rate-based). L2/OOD run on every k-th flow in time order when
+    there are more than `ml_sample` flows. The sampling is recorded in the result."""
     t0 = run["started_at"]
     hits = {"L1": 0, "L2": 0, "OOD": 0}
     first: Dict[str, Optional[float]] = {"L1": None, "L2": None, "OOD": None}
     labels = Counter()
     flagged = 0
-    for f in sorted(flows, key=lambda x: x["end"]):
-        r = scorer(f["features"], f["src"], f["dst"], f["end"])
+    every = max(1, math.ceil(len(flows) / ml_sample)) if ml_sample else 1
+    ml_scored = 0
+    for i, f in enumerate(sorted(flows, key=lambda x: x["end"])):
+        take_ml = i % every == 0
+        ml_scored += take_ml
+        r = scorer(f["features"], f["src"], f["dst"], f["end"], **({} if take_ml else {"ml": False}))
         labels[r.get("label", "?")] += 1
         any_hit = False
         for layer in ("L1", "L2", "OOD"):
@@ -87,7 +101,9 @@ def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer
     from src.agent.threat_analyst import rule_based_analysis
     from src.ir.playbooks import family_from_text
 
-    agg = build_aggregate(run["scenario"], flows, t0, max(1.0, run["ended_at"] - t0))
+    target = (run.get("generator") or {}).get("target")
+    to_victim = [f for f in flows if f["dst"] == target] if target else flows  # incidents are per victim
+    agg = build_aggregate(run["scenario"], to_victim, t0, max(1.0, run["ended_at"] - t0))
     try:
         l3 = rule_based_analysis(IncidentAggregate.model_validate(agg))
         l3_attack, l3_family = l3.attack_type, family_from_text(l3.attack_type)
@@ -100,7 +116,8 @@ def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer
     observed_layers = [k for k in ("L1", "L2", "OOD") if hits[k]] + (["L3"] if l3_hit else [])
     exp_layers = expected.get("layers") or []
     res = {
-        "scenario": run["scenario"], "flows": n, "flagged_flows": flagged,
+        "scenario": run["scenario"], "flows": n, "flagged_flows": flagged, "ml_scored_flows": ml_scored,
+        "ml_sample_every": every,
         "flagged_rate": round(flagged / n, 4) if n else None,
         "layer_hits": hits, "observed_layers": observed_layers,
         "expected_incident": expected.get("incident"), "observed_incident": incident,
@@ -111,6 +128,7 @@ def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer
         "mttd_with_idle_export_s": round(min(detected_at) - t0 + IDLE_TIMEOUT_S, 2) if detected_at else None,
         "mttd_budget_s": expected.get("max_mttd_s"),
         "top_labels": dict(labels.most_common(5)),
+        "aggregate_flows_to_victim": len(to_victim), "l7_slow_connections": (agg.get("l7") or {}).get("slow_connections"),
         "packets_sent": (run.get("generator") or {}).get("packets"),
         "stopped_by": (run.get("generator") or {}).get("stopped_by"),
     }
@@ -134,6 +152,7 @@ def flows_from_pcap(pcap: Path) -> List[dict]:  # pragma: no cover - needs scapy
         out.append({"src": src, "dst": dst, "proto": fl.protocol, "dport": int(feats.get("Destination Port", 0) or 0),
                     "packets": int(fl.fwd_packet_count + fl.bwd_packet_count),
                     "bytes": float(feats.get("Fwd Packets Length Total", 0) or 0) + float(feats.get("Bwd Packets Length Total", 0) or 0),
+                    "fwd_bytes": float(feats.get("Fwd Packets Length Total", 0) or 0),
                     "syn": float(feats.get("SYN Flag Count", 0) or 0), "start": fl.start_time,
                     "end": fl.last_active_time, "features": feats})
     return out
@@ -145,16 +164,27 @@ def real_scorer() -> FlowScorer:  # pragma: no cover - needs model artifacts
     from src.models.ensemble import get_default_ensemble
     from src.models.ood_detector import OODDetector
 
+    from src.features.l7_lowslow import LowSlowDetector
+
     thr, sig, ens = ThresholdDetector(window_seconds=10.0), SignatureFilter(), get_default_ensemble()
+    lows = LowSlowDetector()
     p = REPO / "models" / "ood_model.joblib"
     ood = OODDetector.load(str(p)) if p.is_file() else OODDetector()
 
-    def score(feats, src, dst, ts):
+    def score(feats, src, dst, ts, ml=True):
         t = thr.record_flow(feats, src_ip=src, dst_ip=dst, timestamp=ts)
         s = sig.inspect_flow_features(feats, src_ip=src, dst_ip=dst)
+        ls = lows.observe({"src_ip": src, "src_port": feats.get("Source Port"), "dst_ip": dst,  # as /score/flow does
+                           "dst_port": feats.get("Destination Port") or 80,
+                           "duration_sec": float(feats.get("Flow Duration", 0.0)) / 1e6,
+                           "fwd_bytes": float(feats.get("Fwd Packets Length Total", 0.0) or 0.0),
+                           "header_complete": True}, now=ts)
+        l1 = bool(t.is_violation or s.matched or ls)
+        if not ml:
+            return {"L1": l1, "L2": False, "OOD": False, "label": "unscored"}
         label, conf, _ = ens.score_flow(feats, feature_completeness=None)
         o = ood.assess_features(feats) if ood.is_model_backed else ood.assess(float(conf))
-        return {"L1": bool(t.is_violation or s.matched), "L2": label != "Benign",
+        return {"L1": l1, "L2": label != "Benign",
                 "OOD": bool(o.get("ood_suspected")), "label": label}
 
     return score
@@ -216,7 +246,8 @@ def main() -> None:  # pragma: no cover - CLI
         sc = scs[run["scenario"]]
         flows = flows_from_pcap(run_dir / run["pcap"])
         results.append(analyse_run(run, sc.expected.model_dump(), flows, scorer))
-        print(results[-1]["scenario"], results[-1]["outcome"], results[-1]["observed_layers"], results[-1]["mttd_s"])
+        print(results[-1]["scenario"], results[-1]["outcome"], results[-1]["observed_layers"], results[-1]["mttd_s"],
+              f"flows={results[-1]['flows']} ml_scored={results[-1]['ml_scored_flows']}", flush=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = {"run": run_dir.name, "switch": manifest.get("switch"), "containment": manifest.get("containment"),
               "results": results}
