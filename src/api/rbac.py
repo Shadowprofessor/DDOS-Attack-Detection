@@ -107,3 +107,26 @@ def require_admin(p: Principal = Depends(current_principal)) -> Principal:
     if not p.has("admin"):
         raise HTTPException(status_code=403, detail="Insufficient privileges: admin role required.")
     return p
+
+
+def ws_session_key(websocket) -> Optional[str]:
+    """Session-cookie auth for SOC-app WebSockets. Cookie handshakes must be same-origin
+    (Origin host == Host) so another site cannot ride the cookie (cross-site WS hijacking)."""
+    from urllib.parse import urlparse
+
+    from src.web.session import COOKIE_NAME, get_session_store
+
+    sid = websocket.cookies.get(COOKIE_NAME)
+    origin = websocket.headers.get("origin")
+    host = websocket.headers.get("host")
+    if not sid or not origin or not host or urlparse(origin).netloc != host:
+        return None
+    s = get_session_store().get(sid)
+    if s is None or role_for_key(s.key) is None:
+        return None
+    return s.key
+
+
+def key_from_request(request: Request) -> Optional[str]:
+    """Header API key, else the web-app session's key (CSRF enforced on unsafe methods)."""
+    return request.headers.get("X-API-Key") or request.headers.get("X-Admin-Key") or session_key(request)

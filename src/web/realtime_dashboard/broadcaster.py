@@ -262,6 +262,7 @@ class DashboardBroadcaster:
         valid_keys: Set[str],
         get_pending_fn,
         auth_timeout: float = 5.0,
+        preauth_key: Optional[str] = None,
     ):
         """
         Handle incoming WebSocket client lifecycle:
@@ -274,14 +275,15 @@ class DashboardBroadcaster:
         await websocket.accept()
 
         # 1. First-message authentication (Condition 1)
-        authenticated = False
-        try:
-            raw = await asyncio.wait_for(websocket.receive_text(), timeout=auth_timeout)
-            data = json.loads(raw)
-            if data.get("type") == "auth" and data.get("key") in valid_keys:
-                authenticated = True
-        except (asyncio.TimeoutError, json.JSONDecodeError, Exception) as e:
-            logger.info("WS auth handshake failed or timed out: %s", e)
+        authenticated = bool(preauth_key) and preauth_key in valid_keys  # same-origin session cookie
+        if not authenticated:
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=auth_timeout)
+                data = json.loads(raw)
+                if data.get("type") == "auth" and data.get("key") in valid_keys:
+                    authenticated = True
+            except (asyncio.TimeoutError, json.JSONDecodeError, Exception) as e:
+                logger.info("WS auth handshake failed or timed out: %s", log_safe(e))
 
         if not authenticated:
             logger.warning("Rejecting unauthenticated WebSocket connection with code 1008.")

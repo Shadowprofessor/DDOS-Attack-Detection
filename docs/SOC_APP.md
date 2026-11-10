@@ -1,4 +1,4 @@
-# SOC web app (v4.3.0 – v4.3.1)
+# SOC web app (v4.3.0 – v4.5.0)
 
 React 19 + Vite 8 + strict TypeScript, React Router 7, TanStack Query 5. Source in `dashboard/`.
 The build is served by FastAPI at **`/app`**. The legacy `/dashboard` is unchanged until v4.5.0.
@@ -42,7 +42,19 @@ npm run e2e                                   # Playwright against the real Fast
   refreshes the affected queries. The status chip shows Live / Connecting / Offline (polling),
   and pages keep polling as a fallback.
 
-Live feed, replay, chat and settings arrive in v4.5.0.
+- **Live feed** (v4.5.0) `/app/live`: the `/ws/dashboard` stream (scored flows, burst alerts,
+  enforced drops, campaigns) over the session cookie, same-origin only. Filter by type, attacks
+  only, or search IP/label; pause holds incoming events and resume flushes them. The list is
+  windowed: only visible rows are in the DOM, and the last 2,000 events are kept.
+- **Replay** (v4.5.0) `/app/replay`: pick a stored scenario and speed. The result shows each
+  stage and links to the new replay incident. Proposals from a replay go to a dry-run queue only.
+- **AI analyst** (v4.5.0) `/app/analyst`: read-only chat (`/api/chat`), optionally scoped to an
+  incident, with the incident's stored-analysis provenance alongside. Requests to block or
+  approve get the safety refusal.
+- **Settings & health** (v4.5.0) `/app/settings`: release, environment, package versions, model
+  artifacts, analyst model chain (key present yes/no only), IR settings. Read-only; no secrets.
+- **Legacy dashboard**: `/dashboard` and `/legacy` now send `Deprecation: true` and a
+  `Link: </app>; rel="successor-version"` header. It is removed in v5.0.0.
 
 ## Security model
 | Control | How |
@@ -55,6 +67,13 @@ Live feed, replay, chat and settings arrive in v4.5.0.
 | Rendering | All server strings are rendered as React text. ESLint (`no-restricted-syntax`) fails the build on `dangerouslySetInnerHTML`, `innerHTML` or a `style` attribute. Playwright checks that an `<img onerror>` incident title renders as text. |
 | CORS | Same-origin only by default (was `*`). List extra origins in `DDOS_CORS_ORIGINS` if a separate client needs it. |
 | SPA mount | Files are served only from inside `dashboard/dist` (resolved-path check). Unknown client routes get `index.html`; `/api/*` is never shadowed; missing assets → 404. |
+
+## Accessibility and layout (checked by Playwright on every page)
+- axe-core (WCAG 2.0/2.1 A + AA tags): **0 serious or critical** violations on all 8 page types.
+- No CSP violations in the console. No horizontal scroll at 375 px. No running animations under
+  `prefers-reduced-motion: reduce`. Approvals can be done keyboard-only, and dialogs focus their
+  reason field.
+- Screenshots in `docs/img/` (`SCREENSHOTS=1 npx playwright test`) are captured from the e2e run.
 
 ## Design
 Dark theme. Accents: cyan `#22d3ee`, violet `#818cf8`, amber `#ffba08`. **Red only for
