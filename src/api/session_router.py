@@ -146,3 +146,65 @@ def overview(p: Principal = Depends(require_analyst)):
         "health": {"models_loaded": models_loaded, "llm": llm, "ws_clients": rt.hub.count()},
         "role": p.role,
     }
+
+
+_REPO = __import__("pathlib").Path(__file__).resolve().parent.parent.parent
+
+
+def _release_version() -> str:
+    """Latest released version from CHANGELOG.md (the single source of release truth)."""
+    import re
+
+    try:
+        m = re.search(r"^## \[(\d+\.\d+\.\d+)\]", (_REPO / "CHANGELOG.md").read_text(encoding="utf-8"), re.M)
+        return m.group(1) if m else "unknown"
+    except OSError:
+        return "unknown"
+
+
+@router.get("/api/system")
+def system_info(p: Principal = Depends(require_analyst)):
+    """Settings/health for the SOC app. Non-secret by construction: no keys, tokens or paths
+    outside the repo's models/ folder are returned."""
+    import platform
+    from importlib import metadata
+
+    from src.ir.runtime import get_ir_runtime
+
+    models = []
+    mdir = _REPO / "models"
+    if mdir.is_dir():
+        for f in sorted(mdir.iterdir()):
+            if f.is_file() and f.suffix in (".pkl", ".joblib", ".json", ".pt"):
+                st = f.stat()
+                models.append({"name": f.name, "bytes": st.st_size, "modified": st.st_mtime})
+    try:
+        from src.api.scoring_service import _ENV_NAME, registry
+        env, loaded = _ENV_NAME, bool(registry._loaded)
+    except Exception:
+        env, loaded = "unknown", False
+    try:
+        from src.agent.threat_analyst import get_threat_analyst
+        a = get_threat_analyst()
+        analyst = {"prompt_version": a.prompt_version, "hash_ips": a.hash_ips, **a.client.config.public_view()}
+    except Exception:
+        analyst = {}
+    versions = {}
+    for pkg in ("fastapi", "pydantic", "sqlalchemy", "scikit-learn", "xgboost", "numpy", "torch"):
+        try:
+            versions[pkg] = metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            versions[pkg] = None
+    st = get_ir_runtime().settings
+    return {
+        "version": _release_version(),
+        "environment": env,
+        "python": platform.python_version(),
+        "packages": versions,
+        "models": {"loaded": loaded, "artifacts": models},
+        "analyst": analyst,
+        "incident_response": {"rollback_ttl_s": st.rollback_ttl_s, "rollback_max_attempts": st.rollback_max_attempts,
+                              "cert_in_severity_threshold": st.cert_in.severity_threshold,
+                              "cert_in_deadline_hours": st.cert_in.deadline_hours, "cert_in_hash_iocs": st.cert_in.hash_iocs},
+        "role": p.role,
+    }

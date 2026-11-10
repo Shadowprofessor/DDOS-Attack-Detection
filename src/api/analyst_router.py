@@ -49,7 +49,8 @@ def require_key(request: Request) -> str:
     """API or admin key. Lazy import avoids a circular import with scoring_service."""
     from src.api.scoring_service import _get_valid_admin_keys, _get_valid_api_keys
 
-    key = request.headers.get("X-API-Key") or request.headers.get("X-Admin-Key")
+    from src.api.rbac import key_from_request
+    key = key_from_request(request)  # header key, or SOC web-app session (+CSRF on POST)
     if not key or key not in (_get_valid_api_keys() | _get_valid_admin_keys()):
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     return key

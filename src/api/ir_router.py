@@ -343,24 +343,8 @@ def approvals(p: Principal = Depends(require_analyst)):
 
 # ----------------------------------------------------------------------------- websocket
 def _ws_session_key(websocket: WebSocket) -> Optional[str]:
-    """Session-cookie auth for the SOC app. Cookie handshakes must be same-origin (Origin host ==
-    Host) so another site cannot ride the cookie (cross-site WebSocket hijacking)."""
-    from urllib.parse import urlparse
-
-    from src.api.rbac import role_for_key
-    from src.web.session import COOKIE_NAME, get_session_store
-
-    sid = websocket.cookies.get(COOKIE_NAME)
-    if not sid:
-        return None
-    origin = websocket.headers.get("origin")
-    host = websocket.headers.get("host")
-    if not origin or not host or urlparse(origin).netloc != host:
-        return None
-    s = get_session_store().get(sid)
-    if s is None or role_for_key(s.key) is None:
-        return None
-    return s.key
+    from src.api.rbac import ws_session_key
+    return ws_session_key(websocket)
 
 
 @router.websocket("/ws/incidents")

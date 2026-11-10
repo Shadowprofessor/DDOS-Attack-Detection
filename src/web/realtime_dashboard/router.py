@@ -19,7 +19,8 @@ async def _require_api_key(request: Request):
     """Auth for the dashboard JSON/LLM endpoints. Lazy import avoids a circular import
     with scoring_service (which includes this router at module load)."""
     from src.api.scoring_service import _get_valid_api_keys, _get_valid_admin_keys
-    key = request.headers.get("X-API-Key") or request.headers.get("X-Admin-Key")
+    from src.api.rbac import key_from_request
+    key = key_from_request(request)  # header key, or SOC web-app session (+CSRF on POST)
     if not key or key not in (_get_valid_api_keys() | _get_valid_admin_keys()):
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     return key
@@ -41,21 +42,32 @@ async def websocket_dashboard_endpoint(websocket: WebSocket):
         mgr = get_manager()
         return list(mgr.get_pending().values())
 
+    from src.api.rbac import ws_session_key
+
     await broadcaster.handle_connection(
         websocket=websocket,
         valid_keys=valid_keys,
         get_pending_fn=get_pending_actions_list,
         auth_timeout=5.0,
+        preauth_key=ws_session_key(websocket),  # SOC app: same-origin session cookie
     )
 
 
+LEGACY_HEADERS = {
+    "Deprecation": "true",
+    "Link": '</app>; rel="successor-version"',
+    "Warning": '299 - "Legacy dashboard is deprecated; use /app. Removed in v5.0.0."',
+}
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/legacy", response_class=HTMLResponse)
 async def serve_dashboard_html():
-    """Serve the real-time SOC dashboard HTML interface."""
+    """Legacy real-time dashboard (DEPRECATED: superseded by /app; removed in v5.0.0)."""
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path, media_type="text/html")
-    return HTMLResponse("<h1>Real-Time Dashboard UI Not Found</h1>", status_code=404)
+        return FileResponse(index_path, media_type="text/html", headers=LEGACY_HEADERS)
+    return HTMLResponse("<h1>Real-Time Dashboard UI Not Found</h1>", status_code=404, headers=LEGACY_HEADERS)
 
 
 @router.get("/api/session-detection-summary", dependencies=[Depends(_require_api_key)])
