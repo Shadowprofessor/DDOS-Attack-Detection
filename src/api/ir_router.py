@@ -272,13 +272,106 @@ def extend_rollback(body: ExtendBody, action_id: str = Path(..., pattern=ID_PATT
         raise _fail(e)
 
 
+# ----------------------------------------------------------------------------- analysis / approvals
+@router.post("/api/incidents/{incident_id}/analyze")
+def analyze_incident(incident_id: str = Path(..., pattern=ID_PATTERN), p: Principal = Depends(require_analyst)):
+    """Run the Layer-3 analyst on the incident's stored aggregate. Recommendation only: the result
+    is stored on the incident; nothing is proposed or executed. Replays always use the rule analyst."""
+    from src.api.analyst_router import analyst_rate_limiter
+    from src.agent.threat_analyst import get_threat_analyst, rule_based_analysis
+
+    rt = get_ir_runtime()
+    try:
+        inc = rt.service.get(incident_id)
+    except Exception as e:
+        raise _fail(e)
+    if not inc.get("aggregate"):
+        raise HTTPException(status_code=409, detail="Incident has no telemetry aggregate to analyse.")
+    if not analyst_rate_limiter.allow(p.actor):
+        raise HTTPException(status_code=429, detail="Analyst rate limit exceeded; retry later.")
+    try:
+        agg = IncidentAggregate.model_validate(inc["aggregate"])
+    except Exception:
+        raise HTTPException(status_code=409, detail="Stored aggregate is not valid for analysis.")
+    if inc["is_replay"]:
+        result = {"analysis": rule_based_analysis(agg).model_dump(), "source": "rules",
+                  "prompt_version": "replay", "degraded": True,
+                  "degraded_reason": "replay incidents use the rule-based analyst"}
+    else:
+        result = get_threat_analyst().analyze(agg).model_dump()
+    return rt.service.set_analysis(incident_id, p.actor, result)
+
+
+_BLAST = {"RATE_LIMIT": "low", "BLOCK": "medium", "OPENFLOW_DROP": "medium", "cloudflare_scrub": "high"}
+_ACTION_FIELDS = ("action_id", "action_type", "attacker_ip", "victim_ip", "reason", "confidence", "source",
+                  "status", "proposed_at", "approved_at", "approver", "consensus_tier", "proposed_commands")
+
+
+@router.get("/api/approvals")
+def approvals(p: Principal = Depends(require_analyst)):
+    """Pending actions (awaiting an admin) and active time-boxed blocks, with incident links.
+    Read-only: approving still goes through POST /actions/approve/{id} (admin)."""
+    rt = get_ir_runtime()
+    mgr = rt.service.default_manager()
+    links = {a["action_id"]: a for a in rt.service.action_links() if not a["action_id"].startswith("dry-")}
+    now = rt.service.clock()
+
+    def view(a: dict) -> dict:
+        d = {k: a.get(k) for k in _ACTION_FIELDS}
+        link = links.get(a["action_id"])
+        d["incident_id"] = link["incident_id"] if link else None
+        d["blast_radius"] = _BLAST.get(a.get("action_type"), "medium")
+        d["reversible"] = True
+        d["rollback_ttl_s"] = (link.get("ttl_s") if link else None) or (rt.settings.rollback_ttl_s if link else None)
+        if link:
+            d["rollback_state"] = link["rollback_state"]
+            d["rollback_at"] = link["rollback_at"]
+            scheduled = link["rollback_state"] == "scheduled" and link["rollback_at"]
+            d["seconds_until_rollback"] = (link["rollback_at"] - now) if scheduled else None
+        return d
+
+    pending = [view(a) for a in mgr.get_pending().values()]
+    active = []
+    for aid, link in links.items():
+        if link["rollback_state"] in ("scheduled", "permanent", "failed"):
+            a = mgr.get_action(aid)
+            if a:
+                active.append(view(a))
+    pending.sort(key=lambda d: d.get("proposed_at") or 0, reverse=True)
+    return {"pending": pending, "active": active, "role": p.role, "default_ttl_s": rt.settings.rollback_ttl_s}
+
+
 # ----------------------------------------------------------------------------- websocket
+def _ws_session_key(websocket: WebSocket) -> Optional[str]:
+    """Session-cookie auth for the SOC app. Cookie handshakes must be same-origin (Origin host ==
+    Host) so another site cannot ride the cookie (cross-site WebSocket hijacking)."""
+    from urllib.parse import urlparse
+
+    from src.api.rbac import role_for_key
+    from src.web.session import COOKIE_NAME, get_session_store
+
+    sid = websocket.cookies.get(COOKIE_NAME)
+    if not sid:
+        return None
+    origin = websocket.headers.get("origin")
+    host = websocket.headers.get("host")
+    if not origin or not host or urlparse(origin).netloc != host:
+        return None
+    s = get_session_store().get(sid)
+    if s is None or role_for_key(s.key) is None:
+        return None
+    return s.key
+
+
 @router.websocket("/ws/incidents")
 async def ws_incidents(websocket: WebSocket):
-    """Server->client incident events. Auth: X-API-Key/X-Admin-Key header on the handshake, or a
-    first message {"type": "auth", "key": "..."} within 5 s. Inbound messages are ignored."""
+    """Server->client incident events. Auth: X-API-Key/X-Admin-Key header on the handshake, the
+    SOC web-app session cookie (same-origin handshakes only), or a first message
+    {"type": "auth", "key": "..."} within 5 s. Inbound messages are ignored."""
     await websocket.accept()
     key = websocket.headers.get("x-admin-key") or websocket.headers.get("x-api-key")
+    if not key:
+        key = _ws_session_key(websocket)
     if not key:
         try:
             data = json.loads(await asyncio.wait_for(websocket.receive_text(), timeout=5.0))
