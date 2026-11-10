@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -63,7 +64,8 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0) -> li
     scs = load_scenarios()
     results = []
     v = hosts["victim"]
-    env = f"cd {REPO} && PYTHONPATH={REPO}"
+    repo = shlex.quote(str(REPO))  # the repo path contains spaces
+    env = f"cd {repo} && PYTHONPATH={repo}"
     for sid in names:
         if kill.tripped():
             print("kill switch tripped; stopping")
@@ -74,7 +76,7 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0) -> li
         time.sleep(1.0)
         src_host = hosts[sc.profile.source_role]
         t0 = time.time()
-        raw = src_host.cmd(f"{env} python3 -m lab.traffic.generator --scenario {sid}")
+        raw = src_host.cmd(f"{env} python3 -m lab.traffic.generator --scenario {shlex.quote(sid)}")
         t1 = time.time()
         time.sleep(1.0)
         cap.terminate()
@@ -96,7 +98,7 @@ def containment_test(net, hosts, scope, uplink: str) -> dict:  # pragma: no cove
     nft_file = REPO / "lab" / "traffic" / "containment.nft"
     nat = net.get("nat0")
     h = hosts["client"]
-    subprocess.run(["nft", "-f", str(nft_file)], check=True)
+    subprocess.run(["nft", "-f", str(nft_file)], check=True)  # list args: spaces in path are safe
     before = _drop_count()
     cap = nat.popen(["tcpdump", "-i", uplink, "-n", "-l", f"host {TEST_NET}"])
     time.sleep(1.0)
@@ -122,7 +124,7 @@ def main() -> None:  # pragma: no cover
     ap = argparse.ArgumentParser(description="LAB-ONLY Mininet orchestrator (run as root in WSL2)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--scenarios", default="all")
-    ap.add_argument("--switch", choices=["ovs", "lxbr"], default="lxbr")
+    ap.add_argument("--switch", choices=["ovs", "lxbr"], default="ovs")  # OVS is running in this WSL2
     ap.add_argument("--containment", action="store_true")
     ap.add_argument("--uplink", default="eth0")
     args = ap.parse_args()
