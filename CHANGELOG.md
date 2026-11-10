@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] — 2026-11-11
+
+### Added — cross-dataset evaluation (docs: `docs/eval/cross_dataset.md`)
+- `src/eval/cross_dataset.py`: CIC-DDoS2019-trained ensemble tested on a CICIoT2023 CSV sample
+  (Benign / DDoS-SYN_Flood / DDoS-UDP_Flood, 2,000 rows each, fixed seed, SHA-256 manifest).
+  Option B mapping: 20 of 77 CICFlowMeter features have a CICIoT2023 counterpart. The other 57
+  are filled three ways (zero / CIC-DDoS2019 Benign median / production heuristic), plus a non-ML
+  protocol/flag baseline. Results in `docs/eval/cross_dataset/results.json`; the doc table is
+  generated from it.
+
+### Results (reported honestly: inconclusive)
+- Attack F1: **1.000** (zero fill), **0.050** (benign-median fill), **0.966** (production path;
+  benign FPR **14.2%**). The protocol rule alone: F1 0.916, benign FPR **36.9%**.
+- These numbers depend on how the unmapped features are filled, and the three classes are easy
+  to separate by protocol and flags. This measures sensitivity to a feature-schema mismatch,
+  **not** generalisation. The OOD detector flagged ~0% of these shifted inputs.
+- **The same-dataset caveat stays.** No same-extractor test (pcaps through our CICFlowMeter
+  extractor) has been run.
+
+### Tests
+- `tests/test_cross_dataset.py` (9 + 1 slow opt-in): mapping coverage, deterministic seeded
+  sampling + manifest, imputation strategies, metrics on a known scorer, family rules, baseline
+  reproduction against the committed results, doc table == results.json. `DDOS_RUN_SLOW=1`
+  re-runs the ensemble and compares exactly.
+
 ## [4.3.1] — 2026-11-11
 
 ### Added — SOC web app, part 2 (docs: `docs/SOC_APP.md`)

@@ -1,0 +1,222 @@
+{
+  "dataset": "CICIoT2023 (Neto et al., 2023) - Benign / DDoS-SYN_Flood / DDoS-UDP_Flood CSV sample",
+  "trained_on": "CIC-DDoS2019",
+  "seed": 20231101,
+  "per_class": 2000,
+  "manifest": {
+    "BenignTraffic.csv": {
+      "sha256": "36c780d3030b026432641cdc72fb479e8b0f55e7d39926ec40ab6a18df2e1453",
+      "rows": 14486,
+      "sampled": 2000
+    },
+    "DDoS-SYN_Flood.csv": {
+      "sha256": "4f20f6b74ff4b0057ff6707ff0f011720b56e447098817b0496b0ab4610197cd",
+      "rows": 15649,
+      "sampled": 2000
+    },
+    "DDoS-UDP_Flood.csv": {
+      "sha256": "22b0b84856d5b163f6f408c1b50847ed3a6176857aca35d0cfa3e82c78cb3072",
+      "rows": 15985,
+      "sampled": 2000
+    }
+  },
+  "features_mapped": 20,
+  "features_total": 77,
+  "mapped_feature_names": [
+    "Protocol",
+    "Flow Duration",
+    "Total Fwd Packets",
+    "Fwd Packets Length Total",
+    "Flow Packets/s",
+    "Flow IAT Mean",
+    "Fwd Header Length",
+    "Fwd Packets/s",
+    "Bwd Packets/s",
+    "Packet Length Min",
+    "Packet Length Max",
+    "Packet Length Mean",
+    "Packet Length Std",
+    "Packet Length Variance",
+    "FIN Flag Count",
+    "SYN Flag Count",
+    "RST Flag Count",
+    "ACK Flag Count",
+    "URG Flag Count",
+    "Avg Packet Size"
+  ],
+  "results": [
+    {
+      "strategy": "zero",
+      "n": 6000,
+      "binary_attack": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "benign_fpr": 0.0,
+      "accuracy_binary": 1.0,
+      "per_class": {
+        "Benign": {
+          "n": 2000,
+          "detected_as_attack": 0.0,
+          "correct_family": 1.0,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "Benign": 2000
+          }
+        },
+        "Syn": {
+          "n": 2000,
+          "detected_as_attack": 1.0,
+          "correct_family": 1.0,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "Syn": 2000
+          }
+        },
+        "UDP": {
+          "n": 2000,
+          "detected_as_attack": 1.0,
+          "correct_family": 1.0,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "UDP": 2000
+          }
+        }
+      },
+      "ood_flag_rate": 0.0
+    },
+    {
+      "strategy": "benign_median",
+      "n": 6000,
+      "binary_attack": {
+        "precision": 0.9714,
+        "recall": 0.0255,
+        "f1": 0.0497
+      },
+      "benign_fpr": 0.0015,
+      "accuracy_binary": 0.3498,
+      "per_class": {
+        "Benign": {
+          "n": 2000,
+          "detected_as_attack": 0.0015,
+          "correct_family": 0.9985,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "Benign": 1997,
+            "UDP-Reflection-Amplification": 3
+          }
+        },
+        "Syn": {
+          "n": 2000,
+          "detected_as_attack": 0.0485,
+          "correct_family": 0.0485,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "Benign": 1903,
+            "Syn": 97
+          }
+        },
+        "UDP": {
+          "n": 2000,
+          "detected_as_attack": 0.0025,
+          "correct_family": 0.0025,
+          "ood_flag_rate": 0.0005,
+          "predicted": {
+            "Benign": 1995,
+            "UDP-Reflection-Amplification": 5
+          }
+        }
+      },
+      "ood_flag_rate": 0.0002
+    },
+    {
+      "strategy": "production",
+      "n": 6000,
+      "binary_attack": {
+        "precision": 0.9335,
+        "recall": 1.0,
+        "f1": 0.9656
+      },
+      "benign_fpr": 0.1425,
+      "accuracy_binary": 0.9525,
+      "per_class": {
+        "Benign": {
+          "n": 2000,
+          "detected_as_attack": 0.1425,
+          "correct_family": 0.8575,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "Benign": 1715,
+            "UDP-Reflection-Amplification": 267,
+            "UDP": 17,
+            "Syn": 1
+          }
+        },
+        "Syn": {
+          "n": 2000,
+          "detected_as_attack": 1.0,
+          "correct_family": 1.0,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "Syn": 2000
+          }
+        },
+        "UDP": {
+          "n": 2000,
+          "detected_as_attack": 1.0,
+          "correct_family": 1.0,
+          "ood_flag_rate": 0.0,
+          "predicted": {
+            "UDP-Reflection-Amplification": 1999,
+            "UDP": 1
+          }
+        }
+      },
+      "ood_flag_rate": 0.0
+    }
+  ],
+  "baseline_protocol_rule": {
+    "strategy": "zero",
+    "n": 6000,
+    "binary_attack": {
+      "precision": 0.8444,
+      "recall": 1.0,
+      "f1": 0.9156
+    },
+    "benign_fpr": 0.3685,
+    "accuracy_binary": 0.8772,
+    "per_class": {
+      "Benign": {
+        "n": 2000,
+        "detected_as_attack": 0.3685,
+        "correct_family": 0.6315,
+        "ood_flag_rate": 0.0,
+        "predicted": {
+          "Benign": 1263,
+          "Syn": 435,
+          "UDP": 302
+        }
+      },
+      "Syn": {
+        "n": 2000,
+        "detected_as_attack": 1.0,
+        "correct_family": 1.0,
+        "ood_flag_rate": 0.0,
+        "predicted": {
+          "Syn": 2000
+        }
+      },
+      "UDP": {
+        "n": 2000,
+        "detected_as_attack": 1.0,
+        "correct_family": 1.0,
+        "ood_flag_rate": 0.0,
+        "predicted": {
+          "UDP": 2000
+        }
+      }
+    },
+    "ood_flag_rate": 0.0
+  }
+}
