@@ -31,7 +31,8 @@ def family_from_text(text: Optional[str]) -> str:
         return "dns_amplification"
     if any(k in t for k in ("slow", "l7", "http")):
         return "l7_low_and_slow"
-    if any(k in t for k in ("zero-day", "zero_day", "ood", "novel", "out-of-distribution")):
+    # whole words only: "ood" must not match "fl-ood" (lab run v4.6.1 found every "UDP flood" filed as zero-day)
+    if re.search(r"zero[-_ ]?day|\bood\b|\bnovel\b|out[-_ ]of[-_ ]distribution", t):
         return "zero_day_ood"
     if any(k in t for k in ("reflect", "amplif", "udp", "ntp", "ldap", "ssdp", "memcache", "chargen",
                             "snmp", "mssql", "netbios", "portmap", "tftp")):

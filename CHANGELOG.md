@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.1] — 2026-11-11
+
+### Added — purple-team lab runs (owner-approved traffic generation; docs: `docs/purple_team/README.md`)
+- `lab/traffic/generator.py`: LAB-ONLY gated generator. It runs only after `lab.safety` planning
+  passes: WSL2 + a Mininet host network namespace, allowlisted lab scope, caps, kill switch.
+  Every packet's source and destination are re-checked, total packets are capped, and the kill
+  switch is checked every tick. Sending lives in `_emit_*` functions reachable only through
+  `GatedTrafficRunner` (AST-tested). It reports `achieved_pps`.
+- `lab/traffic/orchestrate.py`: isolated Mininet LAN (OVS, no NAT/route out), per-scenario victim
+  pcaps. The manifest is saved after every scenario.
+- `--containment`: a separate net with a deliberately opened NAT path. nftables
+  (`lab/traffic/containment.nft`) must drop lab egress. Verdict is contained / NOT contained /
+  inconclusive, with diagnostics.
+- `src/eval/lab_analysis.py`: pcaps → real L1 (threshold + signature + low-and-slow) / L2 ensemble
+  / OOD / rule L3 → coverage matrix, MTTD, false positives, ATT&CK Navigator layer
+  (`docs/purple_team/{results.json,coverage.md,navigator_layer.json}`).
+
+### Results (first measured run, reported as measured)
+- **Containment proven.** 3/3 probes to TEST-NET-1 reached the boundary and were dropped; 0 on
+  the uplink.
+- **Detected:** UDP flood, NTP reflection, HTTP low-and-slow. **Partial:** SYN flood (L3 called it
+  low-and-slow), DNS reflection (generic UDP family), novel/OOD mix (OOD 48%).
+  **False positives:** flash crowd (L1 on 41% of flows), benign baseline (3%).
+- **L2 ensemble flagged 0 of 1,452 sampled lab SYN-flood flows** and 1–16% for the other floods.
+  Consistent with v4.4.0: the classifier does not transfer beyond CIC-DDoS2019.
+- MTTD ≈ 1 s after flow export (≈ 61 s including a 60 s idle-timeout export); low-and-slow 117 s.
+
+### Fixed
+- `family_from_text()` matched "ood" inside "fl**ood**", so "UDP flood" analyses were routed to
+  the zero-day playbook. Now whole-word matching, with a regression test.
+
 ## [4.6.0] — 2026-11-11
 
 ### Added — purple-team lab safety layer (docs: `docs/purple_team/README.md`). No traffic generation.
