@@ -60,7 +60,7 @@ def build_net(scope, switch: str, with_nat: bool = False):  # pragma: no cover -
     return net, hosts
 
 
-def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0) -> list:  # pragma: no cover
+def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_result=None) -> list:  # pragma: no cover
     kill = KillSwitch.from_scope(scope)
     scs = load_scenarios()
     results = []
@@ -89,7 +89,9 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0) -> li
                 break
         results.append({"scenario": sid, "pcap": pcap.name, "started_at": t0, "ended_at": t1,
                         "generator": report, "stderr_tail": None if report else raw[-500:]})
-        print(sid, "->", report)
+        print(sid, "->", report, flush=True)
+        if on_result:
+            on_result(results)  # persist after every scenario: an interrupted run keeps its results
         time.sleep(gap_s)
     return results
 
@@ -103,9 +105,11 @@ def containment_test(net, hosts, scope, uplink: str) -> dict:  # pragma: no cove
     nft_file = REPO / "lab" / "traffic" / "containment.nft"
     nat = net.get("nat0")
     h = hosts["client"]
+    # addNAT() sets host routes before net.start(), which then resets them: set it explicitly.
+    h.cmd("ip route replace default via 10.99.0.254")
     diag = {
         "ping_binary": h.cmd("command -v ping || echo MISSING").strip(),
-        "client_routes": h.cmd("ip route").strip().splitlines(),
+        "client_routes": h.cmd("ip -c=never route").strip().splitlines(),
         "lab_ping_victim": "1 received" in h.cmd(f"ping -c 1 -W 1 {scope.hosts['victim']}"),
         "lab_ping_nat_gw": "1 received" in h.cmd("ping -c 1 -W 1 10.99.0.254"),
     }
@@ -164,13 +168,18 @@ def main() -> None:  # pragma: no cover
             net, hosts = build_net(scope, args.switch, with_nat=True)
             try:
                 manifest["containment"] = containment_test(net, hosts, scope, args.uplink)
-                print("containment:", manifest["containment"])
+                print("containment:", manifest["containment"], flush=True)
+                (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
             finally:
                 net.stop()
         if args.scenarios != "none":
             net, hosts = build_net(scope, args.switch)  # no NAT, no route out
             try:
-                manifest["runs"] = run_scenarios(net, hosts, scope, names, out)
+                def save(rs):
+                    manifest["runs"] = rs
+                    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+                manifest["runs"] = run_scenarios(net, hosts, scope, names, out, on_result=save)
             finally:
                 net.stop()
     finally:
