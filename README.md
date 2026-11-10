@@ -170,6 +170,17 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 
 ---
 
+## 🟣 Purple-Team Lab (v4.6.0: safety layer, no traffic yet)
+
+Attack simulation is **lab-only** and the safety rules are enforced in code (`lab/safety.py`). Only
+private, allowlisted lab addresses can be targets; public IPs are refused. Rate, duration and
+concurrency are capped. A kill switch is checked every tick. The runner refuses to start unless it
+detects WSL2 + Mininet. v4.6.0 ships the safety layer, 8 ATT&CK-mapped scenarios and a mock runner,
+all tested in CI, and **no traffic-generation code** (an AST test enforces that). Details:
+[`docs/purple_team/README.md`](docs/purple_team/README.md).
+
+---
+
 ## 🖥️ SOC Web App (v4.3 – v4.5)
 
 A React SOC console served at **`/app`**: login, an overview with KPIs and CERT-In countdowns,

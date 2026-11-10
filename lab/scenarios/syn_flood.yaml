@@ -1,0 +1,7 @@
+id: syn_flood
+name: TCP SYN flood
+attack: true
+mitre: [T1499.001, T1498.001]
+description: Spoofed-source SYN flood from lab attacker hosts toward the victim's port 443.
+profile: {protocol: tcp_syn, rate_pps: 1500, duration_s: 60, sources: 50, source_role: attacker, dst_port: 443, packet_size: 60}
+expected: {incident: true, family: syn_flood, layers: [L1, L2, L3], max_mttd_s: 30}
