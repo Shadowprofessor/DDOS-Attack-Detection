@@ -170,14 +170,21 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 
 ---
 
-## 🟣 Purple-Team Lab (v4.6.0: safety layer, no traffic yet)
+## 🟣 Purple-Team Lab (v4.6.0 safety layer · v4.6.1 measured runs)
 
 Attack simulation is **lab-only** and the safety rules are enforced in code (`lab/safety.py`). Only
 private, allowlisted lab addresses can be targets; public IPs are refused. Rate, duration and
 concurrency are capped. A kill switch is checked every tick. The runner refuses to start unless it
 detects WSL2 + Mininet. v4.6.0 ships the safety layer, 8 ATT&CK-mapped scenarios and a mock runner,
-all tested in CI, and **no traffic-generation code** (an AST test enforces that). Details:
-[`docs/purple_team/README.md`](docs/purple_team/README.md).
+all tested in CI.
+
+**v4.6.1 first lab run (Mininet on WSL2, measured):**
+- **Containment proven.** Lab egress was dropped by nftables, with nothing on the uplink.
+- 3 of 6 attack scenarios fully detected, 3 partially.
+- **2 false positives** (a flash crowd tripped the L1 rate thresholds).
+- **The ML ensemble missed the lab SYN flood entirely.** Detection came from the L1 rules and the
+  rule-based L3. Coverage matrix, MTTD and findings:
+  [`docs/purple_team/README.md`](docs/purple_team/README.md).
 
 ---
 

@@ -7,7 +7,8 @@
 #   * a kill switch (file or env var) stops a running scenario within one tick;
 #   * the runner refuses to start unless it detects WSL2 + Mininet.
 #
-# v4.6.0 ships NO traffic generation: the runner is a mock that produces synthetic summaries.
+# v4.6.0: mock runner only. v4.6.1 adds lab/traffic/ (approved): it runs only after these checks pass
+# and re-checks every packet's source and destination before sending.
 
 allowed_networks:
   - 10.99.0.0/24          # Mininet lab hosts (h1..hN)
@@ -17,6 +18,10 @@ hosts:                    # role -> lab address (must be inside allowed_networks
   attacker: 10.99.0.20
   reflector: 10.99.0.30   # simulated reflector inside the lab (no real NTP/DNS servers)
   client: 10.99.0.40      # benign / flash-crowd client pool base
+
+source_pools:            # extra lab-only source addresses per role (aliases on that Mininet host)
+  attacker: [10.99.0.100, 10.99.0.149]   # inclusive range: up to 50 attack sources
+  client: [10.99.0.150, 10.99.0.249]     # up to 100 benign / flash-crowd clients
 
 caps:
   max_pps: 2000           # per scenario

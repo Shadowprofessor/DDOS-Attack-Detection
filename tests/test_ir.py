@@ -148,6 +148,10 @@ class TestLifecycle:
         assert family_from_text("Slowloris / low-and-slow HTTP (L7)") == "l7_low_and_slow"
         assert family_from_text("zero-day (OOD)") == "zero_day_ood"
         assert family_from_text("???") == "other"
+        # regression (v4.6.1 lab run): "flood" must not match the OOD keyword
+        assert family_from_text("UDP flood") == "udp_reflection_amplification"
+        assert family_from_text("ICMP flood") == "other"
+        assert family_from_text("OOD suspected") == "zero_day_ood"
 
 
 # ----------------------------------------------------------------------------- hash chain
