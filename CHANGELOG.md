@@ -21,6 +21,12 @@ All notable changes to this project are documented here. The format is based on
   analyst result on the incident; never proposes or executes). `/actions/approve|reject|pending`
   accept the web-app session + CSRF.
 
+### Fixed
+- `requirements.txt` now pins `websockets==16.0`. Plain `uvicorn` has no WebSocket library, so
+  a fresh install rejected every `/ws/*` upgrade (dashboard and incidents). Local runs passed
+  only because the package happened to be installed. Caught by the Playwright live-update test
+  in CI.
+
 ### Tests
 - pytest `tests/test_soc_detail.py` (12): session approve/reject + CSRF, analyst 403, approvals
   feed + countdown, analysis stored without new proposals, WS cookie auth + cross-origin reject.
