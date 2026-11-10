@@ -27,7 +27,7 @@ It shows: benign correctly cleared, known attacks classified by the supervised e
 a **Slowloris/R.U.D.Y. low-and-slow alert**, and a **zero-day-suspected (OOD) flag** at a
 threshold calibrated to a 2% false-OOD rate.
 
-### Headline results — CIC-DDoS2019 (same-dataset, separate extraction); cross-dataset pending M6
+### Headline results — CIC-DDoS2019 (same-dataset, separate extraction); cross-dataset: see below
 
 > **Scope:** these are **CIC-DDoS2019 only**, train vs. a *separate extraction* (`test_real_v2`)
 > with exact-duplicate rows removed. `test_real_v2` shares ~13k identical rows with the training
@@ -93,7 +93,15 @@ Datasets and trained model artefacts are **gitignored** (large). To run the demo
    ```
 
 Reported numbers are **CIC-DDoS2019 same-dataset** (see the headline above and
-`docs/EVAL_NOTES.md`); cross-dataset generalization is M6.
+`docs/EVAL_NOTES.md`).
+
+**Cross-dataset check (v4.4.0): inconclusive, reported as such.** The CIC-DDoS2019 models were
+tested on a CICIoT2023 CSV sample (Benign / SYN flood / UDP flood, 6,000 rows) by mapping the 20
+CICIoT2023 columns that have a CICFlowMeter counterpart. Depending only on how the other 57
+features are filled, attack F1 ranges from 1.00 to 0.05, and a two-line protocol rule also catches
+every attack. This shows sensitivity to a feature-schema mismatch, **not** generalisation. A
+same-extractor test (pcaps through our CICFlowMeter extractor) has not been done. Details and
+caveats: [`docs/eval/cross_dataset.md`](docs/eval/cross_dataset.md).
 
 ### Model artifacts
 
