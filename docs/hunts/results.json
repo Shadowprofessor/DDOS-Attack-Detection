@@ -1,0 +1,45 @@
+{
+  "run": "run2",
+  "per_scenario": {
+    "benign_baseline": {
+      "flows": 413,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "dns_reflection_sim": {
+      "flows": 33885,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "flash_crowd": {
+      "flows": 557,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "http_low_and_slow": {
+      "flows": 300,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "novel_ood_mix": {
+      "flows": 31065,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "ntp_reflection_sim": {
+      "flows": 33885,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "syn_flood": {
+      "flows": 34843,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    },
+    "udp_flood": {
+      "flows": 86242,
+      "H1_low_rate_distributed_reflection": [],
+      "H2_distributed_slow_read": []
+    }
+  }
+}
