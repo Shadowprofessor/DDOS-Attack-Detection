@@ -285,6 +285,73 @@ class PendingActionManager:
             self._save_to_disk()
             return True, "Action rejected", action
 
+    def revert(self, action_id: str, actor: str = "human_operator", reason: str = "") -> Tuple[bool, str, Optional[dict]]:
+        """
+        Undo an EXECUTED (human-approved) action, e.g. on rollback-TTL expiry.
+
+        Reverting only ever REMOVES a block; it can never create one, so it does not need a
+        fresh approval. Only EXECUTED actions can be reverted. On success the status becomes
+        ROLLED_BACK, which also drops the IP from the ingress blocklist.
+        """
+        with self._lock:
+            self._load_from_disk()
+            action = self._pending_actions.get(action_id)
+            if not action:
+                return False, f"Action {action_id} not found", None
+            if action.get("status") != "EXECUTED":
+                return False, f"Action {action_id} is {action.get('status')}, not EXECUTED", action
+
+            result = self._revert_action(action)
+            attempts = action.setdefault("revert_attempts", [])
+            attempts.append({"ts": time.time(), "actor": actor, "success": result["success"],
+                             "message": result.get("message", "")})
+            if result["success"]:
+                action["status"] = "ROLLED_BACK"
+                action["rolled_back_at"] = time.time()
+                action["rolled_back_by"] = actor
+                if reason:
+                    action["rollback_reason"] = reason
+            self._save_to_disk()
+            return result["success"], result.get("message", ""), action
+
+    def _revert_action(self, action: dict) -> dict:
+        """Enforcer-specific undo. ONLY invoked via revert()."""
+        action_type = action.get("action_type")
+        attacker_ip = action.get("attacker_ip")
+        action_id = action.get("action_id")
+
+        if action_type == "OPENFLOW_DROP":
+            dp = self._ephemeral_contexts.get(action_id, {}).get("datapath")
+            if dp and hasattr(dp, "ofproto") and hasattr(dp, "ofproto_parser"):
+                try:
+                    parser = dp.ofproto_parser
+                    match = parser.OFPMatch(eth_type=0x0800, ipv4_src=attacker_ip)
+                    mod = parser.OFPFlowMod(
+                        datapath=dp, command=dp.ofproto.OFPFC_DELETE, priority=100, match=match,
+                        out_port=dp.ofproto.OFPP_ANY, out_group=dp.ofproto.OFPG_ANY,
+                    )
+                    dp.send_msg(mod)
+                    return {"success": True, "message": f"OpenFlow DROP removed for {attacker_ip}."}
+                except Exception as e:
+                    logger.error("Failed to remove OpenFlow DROP for %s: %s", log_safe(attacker_ip), log_safe(e))
+                    return {"success": False, "message": "OpenFlow flow delete failed"}
+            # No live datapath (simulated, or the rule's hard_timeout already expired it).
+            return {"success": True, "message": f"OpenFlow DROP removal simulated for {attacker_ip} (no active datapath)."}
+
+        if action_type == "cloudflare_scrub":
+            try:
+                from src.mitigation.cloud_enforcers.cloudflare import CloudflareEnforcer
+                ok, msg = CloudflareEnforcer().remove_scrubbing(attacker_ip)
+                return {"success": ok, "message": msg}
+            except Exception as e:
+                logger.error("Cloudflare scrub removal failed: %s", log_safe(e))
+                return {"success": False, "message": "Cloudflare scrub removal failed"}
+
+        # Command-style actions are only logged on execute (see _execute_action), so the undo is
+        # logged the same way.
+        logger.info("Reverted approved action %s (%s) for %s", log_safe(action_id), log_safe(action_type), log_safe(attacker_ip))
+        return {"success": True, "message": f"Action {action_id} reverted (logged)."}
+
     def clear(self):
         """Reset the queue (primarily for testing)."""
         with self._lock:

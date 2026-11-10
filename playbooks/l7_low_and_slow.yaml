@@ -1,0 +1,22 @@
+id: l7_low_and_slow
+name: HTTP low-and-slow / L7 exhaustion
+version: "1.0"
+attack_families: [l7_low_and_slow]
+mitre: [T1499.002]
+steps:
+  - id: check_slow_connections
+    title: Check concurrent starved connections and per-source connection counts
+    kind: check
+  - id: rule_out_flash_crowd
+    title: Rule out a flash crowd (referrers, session behaviour, CDN logs)
+    kind: check
+  - id: tune_server_timeouts
+    title: Recommend header/body read timeouts and per-IP connection caps on the web tier
+    kind: document
+  - id: rate_limit_top_source
+    title: Request a rate limit for the top slow-connection source
+    kind: propose_action
+    action: {action_type: RATE_LIMIT, target: top_src_ip, reason: "L7 low-and-slow: rate-limit top source", ttl_s: 900}
+  - id: notify_app_owner
+    title: Notify the application owner
+    kind: notify

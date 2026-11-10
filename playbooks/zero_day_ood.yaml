@@ -1,0 +1,20 @@
+id: zero_day_ood
+name: Zero-day / out-of-distribution traffic
+version: "1.0"
+attack_families: [zero_day_ood, other]
+mitre: [T1498]
+steps:
+  - id: review_ood_score
+    title: Review OOD score, nearest known class and raw feature drift
+    kind: check
+  - id: capture_sample
+    title: Preserve a bounded flow sample for offline analysis
+    kind: document
+  - id: escalate_to_admin
+    title: Escalate to an admin before any mitigation (unknown blast radius)
+    kind: notify
+  - id: rate_limit_top_source
+    title: Request a conservative rate limit for the top source
+    kind: propose_action
+    requires_role: admin
+    action: {action_type: RATE_LIMIT, target: top_src_ip, reason: "OOD traffic: conservative rate limit pending analysis", ttl_s: 600}

@@ -1,0 +1,21 @@
+{
+  "incident_id": "replay-ntp-reflection-001",
+  "window_start": 1762765200.0,
+  "window_seconds": 60,
+  "pps": 90000.0,
+  "bps": 420000000.0,
+  "flow_count": 9000,
+  "unique_src_ips": 340,
+  "src_ip_entropy": 7.8,
+  "top_src_ips": [{"key": "10.20.0.11", "share": 0.12}, {"key": "10.20.0.19", "share": 0.09}],
+  "dst_ips": ["10.0.0.8"],
+  "dst_ports": [{"key": "123", "share": 0.95}],
+  "protocol_mix": {"udp": 0.97, "tcp": 0.03},
+  "packet_size_p50": 468.0,
+  "packet_size_p95": 482.0,
+  "ml": {"label": "DrDoS_NTP", "confidence": 0.94, "ood_score": 0.06},
+  "alert_history": [
+    {"ts": 1762765203.0, "layer": "L1", "rule": "threshold_bps", "detail": "bps above baseline"},
+    {"ts": 1762765210.0, "layer": "L2", "rule": "ensemble_attack", "detail": "DrDoS_NTP 0.94"}
+  ]
+}

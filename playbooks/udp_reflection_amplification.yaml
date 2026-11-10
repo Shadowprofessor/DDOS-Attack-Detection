@@ -1,0 +1,23 @@
+id: udp_reflection_amplification
+name: UDP reflection / amplification
+version: "1.0"
+attack_families: [udp_reflection_amplification]
+mitre: [T1498.002]
+steps:
+  - id: identify_reflector_ports
+    title: Identify reflector source ports (NTP 123, SSDP 1900, LDAP 389, memcached 11211, ...)
+    kind: check
+  - id: check_spoofing_scope
+    title: Check whether the victim is the spoofed target or one of our hosts is a reflector
+    kind: check
+  - id: block_top_reflector
+    title: Request a block of the top reflector source
+    kind: propose_action
+    action: {action_type: BLOCK, target: top_src_ip, reason: "Reflection/amplification: block top reflector", ttl_s: 600}
+  - id: request_upstream_filter
+    title: Ask upstream / scrubbing provider for a source-port ACL
+    kind: notify
+    requires_role: admin
+  - id: record_root_cause
+    title: Record vector, amplification factor and impact
+    kind: document

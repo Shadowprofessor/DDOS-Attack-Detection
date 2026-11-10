@@ -162,6 +162,26 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 
 ---
 
+## 🚨 Incident Response (M3, v4.2.0)
+
+Detections become tracked incidents with a **NIST SP 800-61r3 lifecycle**, a **hash-chained
+timeline**, YAML **playbooks**, a **CERT-In 6-hour reporting timer** with a report draft,
+**Markdown/PDF export**, **auto-rollback** of approved blocks (default 10 min, admin can extend),
+and a **replay engine** for demos and regression tests. Analysts can triage, investigate, take
+notes and request actions. Only admins can contain, close, extend rollbacks or pull the
+CERT-In draft. Approval of any block is still `POST /actions/approve/{id}` with an admin key.
+
+```bash
+curl -s -X POST localhost:8000/api/replay -H "X-API-Key: $KEY" \
+     -H "Content-Type: application/json" -d '{"scenario": "syn_flood"}'   # replay incident
+curl -s localhost:8000/api/incidents -H "X-API-Key: $KEY"                 # list
+```
+
+Full reference (lifecycle diagram, RBAC matrix, CERT-In flow, rollback semantics):
+[`docs/IR.md`](docs/IR.md).
+
+---
+
 ## 📋 Version History
 
 | Version | Tag | Description | Status |

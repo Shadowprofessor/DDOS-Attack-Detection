@@ -4,6 +4,51 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] — 2026-11-10
+
+### Added — M3: incident-response backend (`src/ir/`, docs: `docs/IR.md`)
+- **Persistence**: SQLite via SQLAlchemy 2.x (`ir.database_url`, default `data/ir.db`);
+  tables `incidents`, `incident_events`, `actions`, `playbook_runs`, `schema_version`.
+- **NIST SP 800-61r3 lifecycle** `new → triage → investigating → contained → eradicated →
+  recovered → closed` (+ `false_positive`), explicit transition table, CSF 2.0 mapping.
+  `contained` requires a human-approved action or a written justification.
+- **Tamper-evident timeline**: every event is SHA-256 hash-chained; `verify_chain()` is shown on
+  every incident and export.
+- **YAML playbooks** (`playbooks/`: SYN flood, UDP reflection/amplification, DNS amplification,
+  L7 low-and-slow, zero-day/OOD) with strict schema validation. `propose_action` steps only call
+  `PendingActionManager.propose()`.
+- **CERT-In 6-hour timer** (Directions No. 20(3)/2022-CERT-In, 28.04.2022): deadline for
+  severity ≥ threshold, `ddos_cert_in_seconds_remaining`, warnings at 1 h / 15 min / breach,
+  report **draft** (never auto-submitted), "reported" acknowledgement.
+- **Export**: Markdown and PDF (reportlab) incident reports with escaped untrusted text and
+  AI output labelled as a recommendation.
+- **Auto-rollback**: incident-linked approved blocks revert after a TTL (default 600 s) via the
+  new `PendingActionManager.revert()`. Retry with backoff, restart-safe, admin extend/permanent
+  with reason.
+- **Replay engine**: stored incident aggregates go through L1 → L2 → rule-based L3 into
+  `is_replay` incidents, with a dry-run action manager (no real proposals).
+  Scenarios in `replay/scenarios/`.
+- **API** (`src/api/ir_router.py`): incidents CRUD/transition/notes/actions/playbook steps,
+  export, CERT-In draft/reported, replay, rollback status/extend; `WS /ws/incidents`
+  (auth on connect, server→client only).
+- **RBAC** (`src/api/rbac.py`): `analyst` (`DDOS_API_KEYS`) vs `admin` (`DDOS_ADMIN_KEYS`), deny by
+  default, correct 401 vs 403. Actors are recorded as key fingerprints, never key material.
+- **Metrics**: `ddos_incidents{state}`, MTTD/MTTC histograms, `ddos_rollbacks_total{result}`,
+  CERT-In remaining. A dependency-free `Histogram` was added to `src/obs/metrics.py`.
+- `ir:` config block in all six environment YAMLs.
+
+### Changed
+- `requirements.txt` pinned to exact, tested versions; added `sqlalchemy`, `reportlab`;
+  bumped `requests` 2.34.2, `scapy` 2.8.0, `pyyaml` 6.0.3 (pip-audit: 0 known vulnerabilities).
+- CI runs on Python 3.14 (numpy 2.5 / xgboost 3.4 have no 3.11 wheels).
+
+### Tests
+- `tests/test_ir.py` (54) and `tests/test_ir_api.py` (15): lifecycle legal/illegal matrix,
+  hash-chain tamper cases, playbook validation, PENDING-only proposals, AST guard that `src/ir/`
+  never approves or executes, CERT-In timing with an injected clock, export escaping and PDF
+  round-trip, rollback TTL/extend/restart/retry, replay isolation, RBAC endpoint × role matrix,
+  422 without traces, WS auth.
+
 ## [4.1.1] — 2026-11-10
 
 ### Security — fixes for all open CodeQL high/medium alerts (19, pre-existing from v4.0.x)
