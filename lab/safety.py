@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import shutil
 import threading
 from dataclasses import dataclass, field
@@ -50,6 +51,7 @@ class LabScope:
     kill_env: str
     require_wsl2: bool
     require_mininet: bool
+    source_pools: Dict[str, tuple] = field(default_factory=dict)
 
 
 def _bad_kind(ip) -> Optional[str]:
@@ -97,13 +99,30 @@ def load_scope(path: Path = SCOPE_PATH) -> LabScope:
         if not any(ip in n for n in nets):
             raise SafetyError(f"host {role}={ip} is outside allowed_networks")
         hosts[str(role)] = ip
+    pools = {}
+    for role, rng in (data.get("source_pools") or {}).items():
+        lo, hi = (ipaddress.ip_address(str(x)) for x in rng)
+        if not (int(lo) <= int(hi) and all(any(a in n for n in nets) for a in (lo, hi))):
+            raise SafetyError(f"source pool {role} {lo}-{hi} is invalid or outside allowed_networks")
+        if int(hi) - int(lo) + 1 > 254:
+            raise SafetyError(f"source pool {role} is too large")
+        pools[str(role)] = (lo, hi)
     ks = data.get("kill_switch") or {}
     env = data.get("environment") or {}
     return LabScope(networks=nets, hosts=hosts, caps=caps,
                     kill_file=(REPO / str(ks.get("file", "lab/KILL"))).resolve(),
                     kill_env=str(ks.get("env", "DDOS_LAB_KILL")),
                     require_wsl2=bool(env.get("require_wsl2", True)),
-                    require_mininet=bool(env.get("require_mininet", True)))
+                    require_mininet=bool(env.get("require_mininet", True)), source_pools=pools)
+
+
+def source_addresses(scope: LabScope, role: str, n: int) -> List:
+    """The first n addresses of a role's source pool (or the role's own host if it has no pool)."""
+    if role in scope.source_pools:
+        lo, hi = scope.source_pools[role]
+        count = min(n, int(hi) - int(lo) + 1)
+        return [type(lo)(int(lo) + i) for i in range(count)]
+    return [scope.hosts[role]]
 
 
 def check_target(scope: LabScope, address: str):
@@ -179,10 +198,14 @@ def default_probe() -> EnvReport:
         ifaces = os.listdir("/sys/class/net")
     except OSError:
         pass
-    mn_iface = any(i.startswith("h") and "-eth" in i for i in ifaces)
-    mininet = has_mn and mn_iface
+    mn_iface = any(re.match(r"^[a-z][a-z0-9]*-eth\d+$", i) for i in ifaces)
+    try:  # a Mininet host is its own network namespace, distinct from PID 1's
+        in_netns = os.stat("/proc/self/ns/net").st_ino != os.stat("/proc/1/ns/net").st_ino
+    except OSError:
+        in_netns = False
+    mininet = has_mn and mn_iface and in_netns
     if not mininet:
-        reasons.append("Mininet not detected (need `mn` on PATH and an hN-ethX interface)")
+        reasons.append("Mininet host not detected (need `mn`, a <node>-ethN interface, and a separate network namespace)")
     return EnvReport(wsl2=wsl2, mininet=mininet, reasons=reasons)
 
 

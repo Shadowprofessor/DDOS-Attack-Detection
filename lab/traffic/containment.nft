@@ -1,0 +1,13 @@
+# LAB-ONLY egress containment (v4.6.1). Loaded by `lab.traffic.orchestrate --containment`.
+# Anything sourced from the lab subnet that tries to leave through ANY non-lab interface is
+# counted and dropped before NAT/routing can send it out.
+table inet ddos_lab_containment {
+    chain forward {
+        type filter hook forward priority -150; policy accept;
+        ip saddr 10.99.0.0/24 oifname != "s1-*" counter drop comment "lab-egress-drop"
+    }
+    chain prerouting_nat_guard {
+        type filter hook prerouting priority -350; policy accept;
+        ip saddr 10.99.0.0/24 ip daddr != 10.99.0.0/24 counter drop comment "lab-egress-drop"
+    }
+}
