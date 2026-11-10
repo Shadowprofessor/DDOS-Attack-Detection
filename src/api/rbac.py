@@ -61,13 +61,36 @@ def key_fingerprint(key: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", key.encode("utf-8"), b"ddos-actor-fingerprint-v1", 100_000).hex()[:8]
 
 
+def principal_from_session(request: Request, enforce_csrf: bool = True) -> Optional[Principal]:
+    """Resolve the SOC web-app session cookie. State-changing methods must carry the session's
+    CSRF token in X-CSRF-Token (403 otherwise). Returns None when there is no valid session."""
+    from src.web.session import COOKIE_NAME, CSRF_HEADER, SAFE_METHODS, get_session_store
+
+    store = get_session_store()
+    s = store.get(request.cookies.get(COOKIE_NAME))
+    if s is None:
+        return None
+    p = principal_for_key(s.key)
+    if p is None:  # key revoked since login
+        store.delete(s.sid)
+        return None
+    if enforce_csrf and request.method.upper() not in SAFE_METHODS and \
+            not store.csrf_ok(s, request.headers.get(CSRF_HEADER)):
+        raise HTTPException(status_code=403, detail="Missing or invalid CSRF token.")
+    return p
+
+
 def current_principal(request: Request) -> Principal:
+    """API key header (scripts/CLI), else the web-app session cookie (+ CSRF). Deny by default."""
     key = request.headers.get("X-Admin-Key") or request.headers.get("X-API-Key")
-    if not key:
-        raise HTTPException(status_code=401, detail="Missing API credentials.")
-    p = principal_for_key(key)
+    if key:
+        p = principal_for_key(key)
+        if p is None:
+            raise HTTPException(status_code=401, detail="Invalid API key.")
+        return p
+    p = principal_from_session(request)
     if p is None:
-        raise HTTPException(status_code=401, detail="Invalid API key.")
+        raise HTTPException(status_code=401, detail="Missing API credentials.")
     return p
 
 

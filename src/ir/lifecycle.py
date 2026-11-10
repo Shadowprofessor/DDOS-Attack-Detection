@@ -292,17 +292,29 @@ class IncidentService:
         with self.db.session() as s:
             return self.to_dict(self._load(s, incident_id), full=full)
 
+    SORTS = {
+        "created_desc": (Incident.created_at.desc(),),
+        "created_asc": (Incident.created_at.asc(),),
+        "severity_desc": (Incident.severity.desc(), Incident.created_at.desc()),
+        "severity_asc": (Incident.severity.asc(), Incident.created_at.desc()),
+    }
+
     def list(self, status: Optional[str] = None, include_replay: bool = True,
-             limit: int = 50, offset: int = 0) -> dict:
+             limit: int = 50, offset: int = 0, sort: str = "created_desc",
+             min_severity: Optional[int] = None) -> dict:
         with self.db.session() as s:
             q = select(Incident)
             if status:
                 q = q.where(Incident.status == status)
             if not include_replay:
                 q = q.where(Incident.is_replay.is_(False))
+            if min_severity:
+                q = q.where(Incident.severity >= int(min_severity))
             total = s.scalar(select(func.count()).select_from(q.subquery()))
-            rows = s.scalars(q.order_by(Incident.created_at.desc()).limit(limit).offset(offset)).all()
-            return {"total": total, "limit": limit, "offset": offset, "items": [self.to_dict(r) for r in rows]}
+            order = self.SORTS.get(sort, self.SORTS["created_desc"])
+            rows = s.scalars(q.order_by(*order).limit(limit).offset(offset)).all()
+            return {"total": total, "limit": limit, "offset": offset, "sort": sort,
+                    "items": [self.to_dict(r) for r in rows]}
 
     def verify_chain(self, incident_id: str) -> Dict[str, Any]:
         with self.db.session() as s:

@@ -185,3 +185,17 @@ class TestIncidentsWebSocket:
             ev = ws.receive_json()
             assert ev["type"] == "incident.created" and ev["incident"]["id"] == iid
         assert rt.service.get(iid)["status"] == "new"
+
+
+class TestListSortFilter:
+    def test_sort_and_min_severity(self, env):
+        client, _, _ = env
+        for sev in (2, 5, 3):
+            client.post("/api/incidents", headers=ANALYST, json={"title": f"flood sev {sev}", "severity": sev})
+        r = client.get("/api/incidents?sort=severity_desc", headers=ANALYST).json()
+        assert [i["severity"] for i in r["items"]] == [5, 3, 2]
+        r = client.get("/api/incidents?min_severity=3&sort=severity_asc", headers=ANALYST).json()
+        assert [i["severity"] for i in r["items"]] == [3, 5] and r["total"] == 2
+        assert client.get("/api/incidents?sort=bogus", headers=ANALYST).status_code == 422
+        r = client.get("/api/incidents?limit=1&offset=1&sort=severity_desc", headers=ANALYST).json()
+        assert r["total"] == 3 and [i["severity"] for i in r["items"]] == [3]

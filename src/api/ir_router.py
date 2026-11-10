@@ -103,8 +103,11 @@ class ReplayBody(_Strict):
 def list_incidents(status: Optional[Literal[STATES]] = None,  # type: ignore[valid-type]
                    include_replay: bool = True,
                    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+                   sort: Literal["created_desc", "created_asc", "severity_desc", "severity_asc"] = "created_desc",
+                   min_severity: Optional[int] = Query(None, ge=1, le=5),
                    p: Principal = Depends(require_analyst)):
-    return get_ir_runtime().service.list(status=status, include_replay=include_replay, limit=limit, offset=offset)
+    return get_ir_runtime().service.list(status=status, include_replay=include_replay, limit=limit,
+                                         offset=offset, sort=sort, min_severity=min_severity)
 
 
 @router.post("/api/incidents", status_code=201)
