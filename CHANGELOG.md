@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1] — 2026-11-11
+
+### Added — SOC web app, part 2 (docs: `docs/SOC_APP.md`)
+- **Incident detail** page: lifecycle actions by role (containment dialog with justification),
+  AI analyst panel labelled as a recommendation with provenance, aggregated telemetry, playbook
+  runner ("Request action" only proposes), linked actions with rollback state, notes,
+  hash-chained timeline with verification status, MD/PDF export, CERT-In draft + "mark reported"
+  (admin).
+- **Approvals** page (admin): pending actions with estimated blast radius, reversibility,
+  rollback TTL and incident link; approve or reject (with reason) through a confirmation dialog;
+  active blocks with a live rollback countdown, extend or make permanent (with reason).
+- **Live updates** over `/ws/incidents` with session-cookie auth (same-origin handshakes
+  only), reconnect with backoff, polling fallback, status chip.
+- API: `GET /api/approvals` (read-only feed) and `POST /api/incidents/{id}/analyze` (stores the
+  analyst result on the incident; never proposes or executes). `/actions/approve|reject|pending`
+  accept the web-app session + CSRF.
+
+### Fixed
+- `requirements.txt` now pins `websockets==16.0`. Plain `uvicorn` has no WebSocket library, so
+  a fresh install rejected every `/ws/*` upgrade (dashboard and incidents). Local runs passed
+  only because the package happened to be installed. Caught by the Playwright live-update test
+  in CI.
+
+### Tests
+- pytest `tests/test_soc_detail.py` (12): session approve/reject + CSRF, analyst 403, approvals
+  feed + countdown, analysis stored without new proposals, WS cookie auth + cross-origin reject.
+- Vitest 20 (+5). Playwright 13 (+5): analyst workflow (triage, note, playbook steps, AI panel,
+  MD/PDF download), analyst approve via API → 403, admin approve → countdown, keyboard-only
+  extend, contain with justification + CERT-In draft, live WS update without reload.
+
 ## [4.3.0] — 2026-11-10
 
 ### Added — SOC web app, part 1 (`dashboard/`, docs: `docs/SOC_APP.md`)

@@ -16,6 +16,13 @@ describe("api client", () => {
   it("refuses non-/api paths (no open redirect / cross-origin use)", async () => {
     await expect(api("https://evil.example/x")).rejects.toThrow();
     await expect(api("/app/x")).rejects.toThrow();
+    await expect(api("//evil.example/api/x")).rejects.toThrow();
+  });
+
+  it("allows the approval-gate endpoints", async () => {
+    mockFetch(200, { status: "executed" });
+    setCsrfToken("t");
+    await expect(api("/actions/approve/abc", { method: "POST" })).resolves.toEqual({ status: "executed" });
   });
 
   it("sends same-origin credentials and no CSRF header on GET", async () => {

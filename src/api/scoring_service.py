@@ -601,8 +601,12 @@ async def verify_api_key(request: Request) -> str:
 
 
 async def verify_admin_key(request: Request) -> str:
-    # Accept X-Admin-Key header, or X-API-Key if present in ADMIN_KEYS
+    # Accept X-Admin-Key header, or X-API-Key if present in ADMIN_KEYS, or (SOC web app) an
+    # admin session cookie + CSRF token. An analyst session gets 403 like an analyst key.
     key = request.headers.get("X-Admin-Key") or request.headers.get("X-API-Key")
+    if not key:
+        from src.api.rbac import session_key
+        key = session_key(request)
     valid_admin_keys = _get_valid_admin_keys()
     valid_api_keys = _get_valid_api_keys()
     if not key:
@@ -620,6 +624,9 @@ async def verify_admin_key(request: Request) -> str:
 
 async def verify_any_key(request: Request) -> str:
     key = request.headers.get("X-Admin-Key") or request.headers.get("X-API-Key")
+    if not key:
+        from src.api.rbac import session_key
+        key = session_key(request)
     if not key:
         raise HTTPException(status_code=401, detail="Missing API credentials.")
     valid_admin_keys = _get_valid_admin_keys()

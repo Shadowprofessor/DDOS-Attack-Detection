@@ -269,6 +269,32 @@ class IncidentService:
             s.commit()
             return self._action_dict(link)
 
+    def set_analysis(self, incident_id: str, actor: str, result: dict) -> dict:
+        """Attach an analyst result (recommendation only) and log a short timeline event."""
+        a = result.get("analysis") or {}
+        with self._lock, self.db.session() as s:
+            inc = self._load(s, incident_id)
+            inc.analysis_json = result
+            self._append(s, inc, actor, "analysis", {
+                "source": result.get("source"), "degraded": bool(result.get("degraded")),
+                "attack_type": a.get("attack_type"), "severity_suggested": a.get("severity"),
+                "policy_violations": len(result.get("policy_violations") or []),
+            })
+            s.commit()
+        self.publish({"type": "incident.analysis", "incident_id": incident_id})
+        return self.get(incident_id)
+
+    def action_links(self) -> List[dict]:
+        with self.db.session() as s:
+            rows = s.scalars(select(IncidentAction).order_by(IncidentAction.linked_at.desc())).all()
+            return [self._action_dict(a) for a in rows]
+
+    def default_manager(self):
+        if self._manager_factory:
+            return self._manager_factory()
+        from src.mitigation.manager import get_manager
+        return get_manager()
+
     def record_event(self, incident_id: str, actor: str, kind: str, detail: Any) -> None:
         with self._lock, self.db.session() as s:
             inc = self._load(s, incident_id)

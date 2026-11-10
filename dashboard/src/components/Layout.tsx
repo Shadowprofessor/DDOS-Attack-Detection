@@ -1,11 +1,14 @@
 import { NavLink, Outlet } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { logout, useAuth } from "../auth/store";
+import { isAdmin, logout, useAuth } from "../auth/store";
+import { useLiveStatus, useLiveUpdates } from "../live/useLive";
 import { LoginPage } from "../pages/Login";
 
 export function Layout() {
   const auth = useAuth();
   const qc = useQueryClient();
+  useLiveUpdates(auth.status === "authenticated");
+  const live = useLiveStatus();
 
   if (auth.status === "unknown") {
     return (
@@ -29,7 +32,11 @@ export function Layout() {
         <nav aria-label="Primary">
           <NavLink to="/overview">Overview</NavLink>
           <NavLink to="/incidents">Incidents</NavLink>
+          {isAdmin(auth) && <NavLink to="/approvals">Approvals</NavLink>}
         </nav>
+        <span className={`live live-${live}`} role="status" aria-live="polite">
+          {live === "live" ? "Live" : live === "connecting" ? "Connecting…" : "Offline (polling)"}
+        </span>
         <span className="who">
           <span className={`role role-${auth.role}`}>{auth.role}</span>
           <button type="button" className="btn ghost" onClick={onLogout}>

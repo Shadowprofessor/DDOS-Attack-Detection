@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { api, type IncidentPage } from "../api/client";
 import { SeverityBadge } from "../components/SeverityBadge";
 import { formatDuration, formatTime, STATUSES } from "../lib/format";
@@ -103,7 +103,7 @@ export function IncidentsPage() {
             {q.data?.items.map((i) => (
               <tr key={i.id}>
                 <td><SeverityBadge severity={i.severity} /></td>
-                <td className="mono">{i.id}{i.is_replay && <span className="tag">replay</span>}</td>
+                <td className="mono"><Link to={`/incidents/${encodeURIComponent(i.id)}`}>{i.id}</Link>{i.is_replay && <span className="tag">replay</span>}</td>
                 <td>{i.title}</td>
                 <td>{i.attack_family.replace(/_/g, " ")}</td>
                 <td><span className={`status status-${i.status}`}>{i.status.replace("_", " ")}</span></td>
