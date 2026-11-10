@@ -144,12 +144,15 @@ def flows_from_pcap(pcap: Path) -> List[dict]:  # pragma: no cover - needs scapy
 
     out = []
     for fl in FlowExtractor().process_pcap(str(pcap)):
-        k = fl.flow_key
-        src = fl.fwd_src_ip
-        dst = k[1] if k[0] == src else k[0]
+        k = fl.flow_key  # (ip_a, ip_b, port_a, port_b, proto), endpoints sorted
+        src, sport = fl.fwd_src_ip, fl.fwd_src_port
+        if (k[0], k[2]) == (src, sport):
+            dst, dport = k[1], k[3]
+        else:
+            dst, dport = k[0], k[2]
         payload = fl.to_flow_features()
         feats = payload.get("features", payload)
-        out.append({"src": src, "dst": dst, "proto": fl.protocol, "dport": int(feats.get("Destination Port", 0) or 0),
+        out.append({"src": src, "dst": dst, "proto": fl.protocol, "dport": int(dport), "sport": int(sport),
                     "packets": int(fl.fwd_packet_count + fl.bwd_packet_count),
                     "bytes": float(feats.get("Fwd Packets Length Total", 0) or 0) + float(feats.get("Bwd Packets Length Total", 0) or 0),
                     "fwd_bytes": float(feats.get("Fwd Packets Length Total", 0) or 0),
@@ -242,10 +245,26 @@ def main() -> None:  # pragma: no cover - CLI
     scs = load_scenarios()
     scorer = real_scorer()
     results = []
+    cache_dir = run_dir / "scores"
+    cache_dir.mkdir(exist_ok=True)
     for run in manifest.get("runs", []):
         sc = scs[run["scenario"]]
         flows = flows_from_pcap(run_dir / run["pcap"])
-        results.append(analyse_run(run, sc.expected.model_dump(), flows, scorer))
+        cache = cache_dir / f"{run['scenario']}.json"
+        cached = json.loads(cache.read_text()) if cache.is_file() else None
+        if cached and len(cached) == len(flows):  # per-flow scores reused; only aggregation re-runs
+            it = iter(cached)
+            use = lambda *a, **k: next(it)  # noqa: E731
+        else:
+            store: list = []
+
+            def use(*a, _s=store, **k):
+                r = scorer(*a, **k)
+                _s.append(r)
+                return r
+        results.append(analyse_run(run, sc.expected.model_dump(), flows, use))
+        if not (cached and len(cached) == len(flows)):
+            cache.write_text(json.dumps(store))
         print(results[-1]["scenario"], results[-1]["outcome"], results[-1]["observed_layers"], results[-1]["mttd_s"],
               f"flows={results[-1]['flows']} ml_scored={results[-1]['ml_scored_flows']}", flush=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
