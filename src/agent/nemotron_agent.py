@@ -321,7 +321,9 @@ class NemotronAgent:
         # Provider selection: prefer NVIDIA NIM if NVIDIA_API_KEY is set,
         # otherwise fall back to OpenRouter
         if self.nim_api_key:
-            self.model = model or os.environ.get("NIM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
+            # v5.1.0: Nemotron 3.5 Lightning by default (NEMOTRON_MODEL; NIM_MODEL kept for back-compat)
+            self.model = model or os.environ.get("NEMOTRON_MODEL") or os.environ.get(
+                "NIM_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b")
             self.api_url = "https://integrate.api.nvidia.com/v1/chat/completions"
             self.provider = "nvidia_nim"
         else:
@@ -488,6 +490,11 @@ class NemotronAgent:
 
             api_timeout = int(os.environ.get("NEMOTRON_TIMEOUT", "60"))
             if self.provider == "nvidia_nim":
+                # v5.1.0: Nemotron 3.5 Lightning reasons by default; with a 1,024-token budget the
+                # reasoning used 911 tokens and the JSON answer was cut off (finish_reason=length).
+                # Thinking off by default, same as the M2 analyst (src/agent/llm_client.py).
+                payload["chat_template_kwargs"] = {
+                    "enable_thinking": os.environ.get("NEMOTRON_ENABLE_THINKING", "").strip().lower() in ("1", "true", "yes", "on")}
                 resp = requests.post(self.api_url, headers=headers, data=json.dumps(payload), timeout=api_timeout)
                 if resp.status_code in (400, 404) and ("model" in resp.text.lower() or "not found" in resp.text.lower()):
                     logger.error(
@@ -522,7 +529,12 @@ class NemotronAgent:
 
             data = resp.json()
             if "choices" in data and len(data["choices"]) > 0:
-                content = data["choices"][0]["message"].get("content", "")
+                choice = data["choices"][0] or {}
+                content = (choice.get("message") or {}).get("content") or ""
+                if not content:
+                    logger.warning("[DEGRADED MODE ACTIVE] Empty content from model (finish_reason=%s). Using heuristic fallback.",
+                                   choice.get("finish_reason"))
+                    return None, f"Empty content (finish_reason={choice.get('finish_reason')})"
                 try:
                     clean_content = content.strip()
                     if "```" in clean_content:

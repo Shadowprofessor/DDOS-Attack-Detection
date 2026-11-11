@@ -51,8 +51,12 @@ cloud_providers:
 # Layer-3 Nemotron threat analyst (M2). Env vars override these (DDOS_LLM_*, NVIDIA_API_KEY).
 analyst:
   base_url: "${DDOS_LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}"
-  # Fallback chain, tried in order; unavailable models fall through to the rule-based summary.
-  models: "${DDOS_LLM_MODELS:-nvidia/nemotron-3-ultra-550b-a55b,nvidia/nemotron-3-super-120b-a12b}"
+    # Primary model (v5.1.0): NEMOTRON_MODEL, default nvidia/nemotron-3.5-lightning-30b-a3b.
+  # DDOS_LLM_MODELS overrides the whole chain (comma-separated). Rule-based fallback always follows.
+  models: "${DDOS_LLM_MODELS:-}"
+  # Optional: severity-5 incidents try Nemotron 3 Ultra first (slow: 27-46 s). Off by default.
+  escalate_severity5_to_ultra: "${DDOS_LLM_ESCALATE_ULTRA:-false}"
+  escalation_model: "${DDOS_LLM_ESCALATION_MODEL:-nvidia/nemotron-3-ultra-550b-a55b}"
   timeout_s: "${DDOS_LLM_TIMEOUT:-90}"
   enable_thinking: "${DDOS_LLM_ENABLE_THINKING:-false}"
   max_tokens: "${DDOS_LLM_MAX_TOKENS:-1500}"

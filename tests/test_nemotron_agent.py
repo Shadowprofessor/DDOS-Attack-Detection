@@ -689,7 +689,7 @@ def test_nvidia_nim_provider_selection(monkeypatch):
     agent = NemotronAgent()
     assert agent.provider == "nvidia_nim"
     assert urlparse(agent.api_url).hostname == "integrate.api.nvidia.com"
-    assert agent.model == "nvidia/nemotron-3-ultra-550b-a55b"
+    assert agent.model == "nvidia/nemotron-3.5-lightning-30b-a3b"  # v5.1.0 default
 
 
 def test_openrouter_provider_selection(monkeypatch):
