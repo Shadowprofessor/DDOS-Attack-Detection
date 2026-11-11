@@ -70,7 +70,7 @@ class _Resp:
 
 
 def _agent(monkeypatch, data, sent):
-    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test-key-12345")
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake")  # placeholder; the HTTP call is mocked
     import src.agent.nemotron_agent as na
 
     def fake_post(url, headers=None, data=None, timeout=None):
