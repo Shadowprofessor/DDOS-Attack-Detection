@@ -45,9 +45,10 @@ def _fetch(url: str) -> int:  # pragma: no cover - network
     import requests
 
     headers = {"User-Agent": "citation-check/1.0 (+https://github.com/Shadowprofessor/DDOS-Attack-Detection)"}
-    r = requests.head(url, allow_redirects=True, timeout=20, headers=headers)
+    r = requests.head(url, allow_redirects=True, timeout=(15, 60), headers=headers)
     if r.status_code in (403, 405, 501) or r.status_code >= 400:
-        r = requests.get(url, allow_redirects=True, timeout=30, headers=headers, stream=True)
+        # slow government/standards sites (e.g. cert-in.org.in) can take >30 s to start a PDF
+        r = requests.get(url, allow_redirects=True, timeout=(15, 90), headers=headers, stream=True)
     return r.status_code
 
 

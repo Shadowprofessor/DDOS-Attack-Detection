@@ -16,7 +16,7 @@ export DDOS_API_KEYS=demo-analyst-key-01 DDOS_ADMIN_KEYS=demo-admin-key-0001
 python -m uvicorn src.api.app:app --port 8000
 
 # 3. (second terminal) score one attack-looking flow -> a PENDING mitigation proposal, nothing executed
-curl -s -X POST localhost:8000/score/flow -H "X-API-Key: demo-analyst-key-01" -H "Content-Type: application/json" \
+curl -s -X POST localhost:8000/score/flow -H "X-API-Key: $DDOS_API_KEYS" -H "Content-Type: application/json" \
      -d '{"features":{"src_ip":"10.0.0.9","dst_ip":"10.0.0.4","Protocol":6,"SYN Flag Count":100}}'
 ```
 
