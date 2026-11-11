@@ -1,3 +1,5 @@
 # gitleaks false positives: fake test-only keys (fixed in a later commit)
 6e34571a54f902ddd3001d9f487e19b6fa8527e9:tests/test_soc_session.py:generic-api-key:64
 6e34571a54f902ddd3001d9f487e19b6fa8527e9:tests/test_soc_session.py:generic-api-key:65
+# throwaway demo key in docs/DEMO.md (replaced by $DDOS_API_KEYS in a later commit)
+ccec28998b564c2231f36a179b55c0bec12b56c1:docs/DEMO.md:curl-auth-header:19

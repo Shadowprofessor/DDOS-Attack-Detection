@@ -1,7 +1,7 @@
-# SOC web app (v4.3.0 – v4.5.0)
+# SOC web app (v4.3.0 – v5.0.0)
 
 React 19 + Vite 8 + strict TypeScript, React Router 7, TanStack Query 5. Source in `dashboard/`.
-The build is served by FastAPI at **`/app`**. The legacy `/dashboard` is unchanged until v4.5.0.
+The build is served by FastAPI at **`/app`** (`/` redirects there).
 
 ```bash
 cd dashboard && npm ci && npm run build      # -> dashboard/dist, served at http://localhost:8000/app
@@ -53,8 +53,8 @@ npm run e2e                                   # Playwright against the real Fast
   approve get the safety refusal.
 - **Settings & health** (v4.5.0) `/app/settings`: release, environment, package versions, model
   artifacts, analyst model chain (key present yes/no only), IR settings. Read-only; no secrets.
-- **Legacy dashboard**: `/dashboard` and `/legacy` now send `Deprecation: true` and a
-  `Link: </app>; rel="successor-version"` header. It is removed in v5.0.0.
+- **Legacy dashboard**: removed in v5.0.0. `/dashboard` and `/legacy` redirect (308) to `/app/`.
+  Its JSON endpoints and the `/ws/dashboard` stream remain; the live feed uses them.
 
 ## Security model
 | Control | How |

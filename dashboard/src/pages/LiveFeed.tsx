@@ -12,6 +12,8 @@ export interface FeedItem {
   dst: string;
   attack: boolean;
   confidence: number | null;
+  degraded?: boolean;
+  degradationReason?: string;
 }
 
 const MAX_ITEMS = 2000;
@@ -30,6 +32,8 @@ export function toItem(msg: Raw, id: number): FeedItem | null {
         id, ts, kind: "flow", label: str(f.label ?? f.attack_type ?? "flow"),
         src: str(f.src_ip), dst: str(f.dst_ip), attack: Boolean(f.is_attack),
         confidence: typeof f.confidence === "number" ? f.confidence : null,
+        degraded: Boolean(f.degraded_confidence),
+        degradationReason: str(f.degradation_reason) || undefined,
       };
     }
     case "burst_alert": {
@@ -176,7 +180,14 @@ export function LiveFeedPage() {
               <span className={`kind kind-${i.kind}`}>{i.kind}</span>
               <span className="mono">{i.src || "—"} → {i.dst || "—"}</span>
               <span>{i.label}</span>
-              <span className="muted small">{i.confidence === null ? "" : i.confidence.toFixed(2)}</span>
+              <span className="muted small">
+                {i.confidence === null ? "" : i.confidence.toFixed(2)}
+                {i.degraded && (
+                  <span className="tag badge-degraded" title={i.degradationReason ?? "degraded confidence"}>
+                    DEGRADED
+                  </span>
+                )}
+              </span>
             </div>
           ))}
         </div>

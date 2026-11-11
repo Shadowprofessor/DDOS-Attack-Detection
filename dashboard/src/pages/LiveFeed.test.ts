@@ -10,6 +10,13 @@ describe("live feed", () => {
     expect(toItem({ type: "pending_update" }, 4)).toBeNull();
   });
 
+  it("keeps the degraded-confidence flag and reason", () => {
+    const f = toItem({ type: "flow_scored", flow: { label: "Syn", degraded_confidence: true,
+      degradation_reason: "host_ingress: 23 backward features unobserved and zero-filled" } }, 6);
+    expect(f?.degraded).toBe(true);
+    expect(f?.degradationReason).toContain("host_ingress");
+  });
+
   it("renders only a window of rows", () => {
     expect(windowRange(0, 360, 10_000)).toEqual({ start: 0, end: 18 });
     const w = windowRange(36_000, 360, 10_000);

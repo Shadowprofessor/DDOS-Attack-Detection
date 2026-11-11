@@ -19,8 +19,8 @@ two AI agents.
 - **L3 — LLM reasoning agent.** NVIDIA Nemotron 3 Ultra (`nvidia/nemotron-3-ultra-550b-a55b`, base
   `https://integrate.api.nvidia.com/v1`, key `NVIDIA_API_KEY`) via `src/agent/`. Aggregated-alert
   triage only. Offline rule fallback when no key.
-- **Dashboard/obs.** FastAPI + WebSocket SOC dashboard (`src/web/`), Prometheus `/metrics`, JSON logs
-  (`src/obs/`). React rebuild planned (M5).
+- **Dashboard/obs.** React SOC web app (`dashboard/`, served at `/app`; legacy static dashboard removed
+  in v5.0.0), WebSocket streams (`src/web/`, `/ws/incidents`), Prometheus `/metrics`, JSON logs (`src/obs/`).
 
 ## Non-negotiable rules
 - **LLM is NEVER in the packet fast-path.** It only sees aggregated alerts (1 call/incident, cached,
