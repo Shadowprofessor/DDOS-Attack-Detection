@@ -63,7 +63,7 @@ def test_chat_message_is_truncated(c, monkeypatch):
     seen = {}
 
     class Fake:
-        def answer_query(self, m):
+        def answer_query(self, m, history=None, incident_id=None):
             seen["len"] = len(m)
             return {"response": "ok", "authority": "READ_ONLY_ADVISORY", "model": "fake"}
 

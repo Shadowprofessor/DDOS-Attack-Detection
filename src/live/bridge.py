@@ -195,7 +195,8 @@ class Bridge:
             t1 = self.clock()
             self.stats["windows"] += len(batch)
             self.log("windows_posted", status=status, n=len(batch), sent_at=t0, ack_at=t1,
-                     last_window_end=batch[-1]["end"], skew_s=self.agg.skew_s)
+                     last_window_end=batch[-1]["end"], skew_s=self.agg.skew_s,
+                     late_packets=self.agg.late_packets)
             for w in batch:
                 self.recent[w["dst"]].append(w)
             if status == 200:
@@ -293,7 +294,7 @@ class Bridge:
         ovs = self.push_ovs()
         return {"packets": pk, "alerts": len(opened), "flows_scored": scored, "ovs": ovs}
 
-    def run(self, tick_s: float = 1.0, duration_s: Optional[float] = None) -> None:  # pragma: no cover - loop
+    def run(self, tick_s: float = 0.5, duration_s: Optional[float] = None) -> None:  # pragma: no cover - loop
         end = None if duration_s is None else self.clock() + duration_s
         self.log("bridge_started", run_dir=str(self.run_dir), sensor=self.sensor)
         while end is None or self.clock() < end:

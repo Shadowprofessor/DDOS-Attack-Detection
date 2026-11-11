@@ -27,7 +27,9 @@ async function loginAs(page: Page, key: string) {
 
 test("analyst works an incident: triage, note, playbook, AI analysis, export", async ({ page }) => {
   await loginAs(page, ANALYST_KEY);
-  await expect(page.getByRole("link", { name: "Approvals" })).toHaveCount(0); // admin-only nav
+  await page.getByRole("link", { name: "Approvals (view)" }).click(); // analysts see the queue read-only
+  await expect(page.getByText(/signed in as an/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Approve/ })).toHaveCount(0);
   await page.goto(`/app/incidents/${incidentId}`);
   await expect(page.getByRole("heading", { name: /Workflow SYN flood/ })).toBeVisible();
   await expect(page.getByText(/Timeline verified/)).toBeVisible();

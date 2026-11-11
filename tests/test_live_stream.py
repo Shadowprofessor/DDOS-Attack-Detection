@@ -162,3 +162,21 @@ def test_flow_record_direction_is_the_initiator():
     assert lf.poll(8.0) == []
     (r, _) = lf.flush()
     assert (r["src"], r["dst"], r["sport"], r["dport"], r["packets"]) == ("10.99.0.100", "10.99.0.10", 40000, 443, 2)
+
+
+def test_late_disk_arrival_during_a_flood_is_not_closed_as_empty_windows():
+    """live1 (v5.2.0): pcap writes reached Windows ~2.6 s late. Closing windows by the wall clock
+    while traffic was still arriving sent the floods as empty windows and cleared the alert."""
+    clk = Clock(1000.0)
+    w = WindowAggregator(clock=clk, grace_s=2.0)
+    out = []
+    for sec in range(10):  # each second's packets show up 2.6 s later, in one burst
+        clk.t = 1000 + sec + 2.6
+        for i in range(500):
+            w.add(pkt(1000 + sec + i / 500, sport=1000 + i))
+        out += w.emit()
+    assert [o["packets"] for o in out if o["dst"] == "10.99.0.10"] == [500] * 9  # last window still open
+    assert w.late_packets == 0
+    clk.t = 1015.0  # traffic stopped: quiet for > grace -> the wall clock closes the rest
+    tail = [o for o in w.emit() if o["dst"] == "10.99.0.10"]
+    assert tail[0]["packets"] == 500 and all(o["packets"] == 0 for o in tail[1:])

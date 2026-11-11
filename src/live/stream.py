@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """Windowed features (every 1 s, per destination) and live flow records with a short export interval.
 
-Windows are keyed by pcap time. A window closes when the packet clock passes its end, or, if traffic
-stops, when the wall clock is `grace_s` past its end. The wall clock is first shifted by the smallest
-(wall - packet time) gap seen so far, so a WSL2 clock that differs from the Windows clock by a few
-seconds does not close windows early. So a quiet victim still produces zero-packet
-windows, and the platform sees the attack *end* as well as its start.
+Windows are keyed by pcap time. While packets keep arriving, a window closes only when the packet
+clock passes its end: tcpdump's writes reach Windows over the shared disk in bursts 1-3 s late
+(measured in live1), and closing by the wall clock then would send floods as empty windows.
+Only when *no packet has arrived for `grace_s` wall seconds* (traffic really stopped) are windows
+closed by the wall clock, shifted by the smallest (wall - packet time) gap seen, so a quiet victim
+still gets zero-packet windows and the platform sees the attack end. Packets that still arrive for
+an already-sent window are counted in `late_packets`, never silently re-binned.
 
 Flows: a long flow (an ICMP flood is 20 flows lasting the whole scenario) is never "finished" while
 the attack runs. So every `export_s` seconds each active flow is exported as a *snapshot* and keeps
@@ -62,14 +64,18 @@ class WindowAggregator:
         self._closed_until: Optional[float] = None  # every window starting before this is emitted
         self._latest_pkt = 0.0
         self.skew_s: Optional[float] = None  # min(wall - packet ts) observed
+        self._last_arrival: Optional[float] = None  # wall time the latest packet was read
+        self.late_packets = 0
 
     def _start(self, ts: float) -> float:
         return math.floor(ts / self.window_s) * self.window_s
 
     def add(self, pkt: Packet) -> None:
         start = self._start(pkt.timestamp)
+        self._last_arrival = self.clock()
         if self._closed_until is not None and start < self._closed_until:
-            return  # late packet for a window already sent: dropped, never re-sent
+            self.late_packets += 1  # its window was already sent: counted, never re-sent
+            return
         s = self._slots[start].setdefault(pkt.dst_ip, _Slot())
         size = pkt.header_len + pkt.payload_len
         s.packets += 1
@@ -115,13 +121,21 @@ class WindowAggregator:
             "top_dst_ports": [{"port": p, "packets": n} for p, n in s.ports.most_common(self.top_n)],
         }
 
+    def _quiet(self) -> bool:
+        return self._last_arrival is None or self.clock() - self._last_arrival >= self.grace_s
+
     def now(self) -> float:
-        """Current time on the packet clock: the latest packet, or the skew-corrected wall clock if later."""
+        """Current time on the packet clock: the latest packet while traffic flows; once it has been
+        quiet for `grace_s`, the skew-corrected wall clock (if later)."""
+        if not self._quiet():
+            return self._latest_pkt
         return max(self._latest_pkt, self.clock() - (self.skew_s or 0.0))
 
     def emit(self) -> List[dict]:
-        """Close every window whose end is behind max(packet clock, wall clock - grace)."""
-        watermark = max(self._latest_pkt, self.clock() - (self.skew_s or 0.0) - self.grace_s)
+        """Close every window whose end is behind the packet clock (or the wall clock once quiet)."""
+        watermark = self._latest_pkt
+        if self._quiet():
+            watermark = max(watermark, self.clock() - (self.skew_s or 0.0) - self.grace_s)
         if self._latest_pkt == 0.0 and not self._slots:
             return []
         upto = self._start(watermark)  # windows starting before this have ended

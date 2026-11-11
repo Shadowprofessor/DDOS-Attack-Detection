@@ -91,9 +91,11 @@ def test_bridge_opens_incident_from_a_growing_pcap_and_relays_flows_and_ovs(c, t
         json.dumps({"switch": "s1", "ts": 1000.0, "ports": [{"port": "1", "rx_packets": 0, "tx_packets": 0, "rx_bytes": 0, "tx_bytes": 0}]}) + "\n"
         + json.dumps({"switch": "s1", "ts": 1002.0, "ports": [{"port": "1", "rx_packets": 1200, "tx_packets": 10, "rx_bytes": 48000, "tx_bytes": 400}]}) + "\n"
         + '{"switch": "s1", "ts": 1004')  # partial line: left for the next tick
-    clk.t = 1020.0  # flood over; idle flows finalise; zero windows close the episode
-    r = b.tick()
-    assert r["ovs"] == 2 and r["flows_scored"] >= 1
+    clk.t = 1020.0  # the rest of the flood arrives (late, in one burst)
+    r1 = b.tick()
+    clk.t = 1040.0  # then quiet: idle flows finalise; zero windows close the episode
+    r2 = b.tick()
+    assert r1["ovs"] + r2["ovs"] == 2 and r1["flows_scored"] + r2["flows_scored"] >= 1
 
     state = c.get("/api/live/state", headers={"X-API-Key": KEY}).json()
     v = state["victims"]["10.99.0.10"]
