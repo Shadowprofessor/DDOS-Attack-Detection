@@ -9,7 +9,7 @@ from src.api.analyst_router import _KeyRateLimiter
 from src.api.scoring_service import app
 from src.live.state import LiveState, traffic_hint
 
-KEY = "live-analyst-key-01"
+KEY = "test-live"  # placeholder key for the in-process app
 H = {"X-API-Key": KEY}
 
 

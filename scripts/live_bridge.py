@@ -54,7 +54,7 @@ def main() -> None:
     try:
         b.run(duration_s=args.duration)
     except KeyboardInterrupt:
-        pass
+        print("stopping (Ctrl+C)")  # normal way to end a live session
     finally:
         b.close()
     print("stats:", dict(b.stats))

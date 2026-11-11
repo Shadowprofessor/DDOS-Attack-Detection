@@ -31,7 +31,8 @@ OVS_FIELDS = ("port", "host", "rx_packets", "tx_packets", "rx_bytes", "tx_bytes"
 
 
 class Http(Protocol):
-    def post(self, path: str, body: Optional[dict] = None) -> tuple: ...  # (status, json)
+    def post(self, path: str, body: Optional[dict] = None) -> tuple:
+        """POST JSON; returns (status, json body)."""
 
 
 class RequestsHttp:

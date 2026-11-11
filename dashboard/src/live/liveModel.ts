@@ -27,22 +27,35 @@ export interface LiveSnapshot {
   flows: LiveFlow[]; ovs: OvsRate[];
 }
 export interface LiveModel {
-  victims: Record<string, LiveWindow[]>; open: Record<string, Episode>; episodes: Episode[];
-  flows: LiveFlow[]; ovs: Record<string, OvsRate>;
+  // Keyed by server-supplied strings: Maps (never plain objects) so a key like "__proto__" cannot
+  // pollute a prototype, and keys must match a strict format before they are stored.
+  victims: Map<string, LiveWindow[]>; open: Map<string, Episode>; episodes: Episode[];
+  flows: LiveFlow[]; ovs: Map<string, OvsRate>;
 }
 
 export const KEEP_WINDOWS = 180;
 const KEEP_EPISODES = 30;
 const KEEP_FLOWS = 50;
 
-export const empty = (): LiveModel => ({ victims: {}, open: {}, episodes: [], flows: [], ovs: {} });
+export const empty = (): LiveModel => ({ victims: new Map(), open: new Map(), episodes: [], flows: [], ovs: new Map() });
+
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+const PORT_KEY = /^[A-Za-z0-9_-]{1,32}\/[A-Za-z0-9_-]{1,16}$/;
+export const isIp = (v: unknown): v is string => typeof v === "string" && IPV4.test(v);
+const ovsKey = (r: OvsRate): string | null => {
+  const k = `${r.switch}/${r.port}`;
+  return PORT_KEY.test(k) ? k : null;
+};
 
 export function fromSnapshot(s: LiveSnapshot): LiveModel {
-  const ovs: Record<string, OvsRate> = {};
-  for (const r of s.ovs ?? []) ovs[`${r.switch}/${r.port}`] = r;
-  const open: Record<string, Episode> = {};
-  for (const e of s.open_alerts ?? []) open[e.dst] = e;
-  return { victims: s.victims ?? {}, open, episodes: s.episodes ?? [], flows: s.flows ?? [], ovs };
+  const m = empty();
+  for (const [dst, ws] of Object.entries(s.victims ?? {})) if (isIp(dst) && Array.isArray(ws)) m.victims.set(dst, ws.slice(-KEEP_WINDOWS));
+  for (const e of s.open_alerts ?? []) if (isIp(e.dst)) m.open.set(e.dst, e);
+  for (const r of s.ovs ?? []) {
+    const k = ovsKey(r);
+    if (k) m.ovs.set(k, r);
+  }
+  return { ...m, episodes: s.episodes ?? [], flows: s.flows ?? [] };
 }
 
 type Ev = { type: string; [k: string]: unknown };
@@ -52,24 +65,33 @@ export function applyEvent(m: LiveModel, ev: Ev): LiveModel {
   switch (ev.type) {
     case "live.window": {
       const w = ev.window as LiveWindow;
-      const prev = m.victims[w.dst] ?? [];
-      return { ...m, victims: { ...m.victims, [w.dst]: [...prev, w].slice(-KEEP_WINDOWS) } };
+      if (!w || !isIp(w.dst)) return m;
+      const victims = new Map(m.victims);
+      victims.set(w.dst, [...(m.victims.get(w.dst) ?? []), w].slice(-KEEP_WINDOWS));
+      return { ...m, victims };
     }
     case "live.alert": {
       const e = ev.episode as Episode;
-      return { ...m, open: { ...m.open, [e.dst]: e }, episodes: [e, ...m.episodes.filter((x) => x.id !== e.id)].slice(0, KEEP_EPISODES) };
+      if (!e || !isIp(e.dst)) return m;
+      const open = new Map(m.open);
+      open.set(e.dst, e);
+      return { ...m, open, episodes: [e, ...m.episodes.filter((x) => x.id !== e.id)].slice(0, KEEP_EPISODES) };
     }
     case "live.clear": {
       const e = ev.episode as Episode;
-      const open = { ...m.open };
-      delete open[e.dst];
+      if (!e) return m;
+      const open = new Map(m.open);
+      open.delete(e.dst);
       return { ...m, open, episodes: m.episodes.map((x) => (x.id === e.id ? e : x)) };
     }
     case "live.flow":
       return { ...m, flows: [ev.flow as LiveFlow, ...m.flows].slice(0, KEEP_FLOWS) };
     case "live.ovs": {
-      const ovs = { ...m.ovs };
-      for (const r of (ev.ports as OvsRate[]) ?? []) ovs[`${r.switch}/${r.port}`] = r;
+      const ovs = new Map(m.ovs);
+      for (const r of (ev.ports as OvsRate[]) ?? []) {
+        const k = ovsKey(r);
+        if (k) ovs.set(k, r);
+      }
       return { ...m, ovs };
     }
     case "live.reset":
@@ -81,12 +103,12 @@ export function applyEvent(m: LiveModel, ev: Ev): LiveModel {
 
 /** Victim to show by default: one with an open alert, else the busiest in its latest window. */
 export function pickVictim(m: LiveModel, current: string | null): string | null {
-  if (current && m.victims[current]) return current;
-  const open = Object.keys(m.open);
+  if (current && m.victims.has(current)) return current;
+  const open = [...m.open.keys()];
   if (open.length) return open[0] ?? null;
   let best: string | null = null;
   let bestPps = -1;
-  for (const [dst, ws] of Object.entries(m.victims)) {
+  for (const [dst, ws] of m.victims) {
     const last = ws[ws.length - 1];
     if (last && last.pps > bestPps) { best = dst; bestPps = last.pps; }
   }

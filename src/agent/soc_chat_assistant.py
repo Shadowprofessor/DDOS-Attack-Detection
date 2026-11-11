@@ -206,16 +206,17 @@ class SocChatAssistant:
                 for model in client.config.models:
                     try:
                         content = client.chat(model, msgs).strip()
-                    except LLMUnavailable as e:
-                        reason = f"{model}: {e}"
+                    except LLMUnavailable:
+                        reason = "the model request failed"  # details stay in server logs, not in the reply
+                        logger.info("chat: %s unavailable", model)
                         continue
                     if content:
                         text = f"{NOTICE}\n\n{content}" if action_request else content
                         return {"response": text, "model": model, "authority": "READ_ONLY_ADVISORY",
                                 "grounding": sorted(ctx)}
         except Exception as e:  # pragma: no cover - defensive; fall back below
-            reason = type(e).__name__
-            logger.debug("Nemotron chat failed: %s", reason)
+            reason = "the model request failed"
+            logger.debug("Nemotron chat failed: %s", type(e).__name__)
 
         return {"response": self._fallback(q, ctx, action_request, reason), "model": "rules (offline)",
                 "authority": "READ_ONLY_ADVISORY", "grounding": sorted(ctx)}

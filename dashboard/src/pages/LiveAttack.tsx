@@ -103,12 +103,12 @@ export function LiveAttackPage() {
   });
 
   const shown = pickVictim(model, victim);
-  const ws = useMemo(() => (shown ? model.victims[shown] ?? [] : []), [model, shown]);
+  const ws = useMemo(() => (shown ? model.victims.get(shown) ?? [] : []), [model, shown]);
   const last = ws[ws.length - 1];
-  const alert = shown ? model.open[shown] : undefined;
+  const alert = shown ? model.open.get(shown) : undefined;
   const talkers = useMemo(() => topTalkers(ws), [ws]);
-  const ovs = Object.values(model.ovs).sort((a, b) => a.port.localeCompare(b.port));
-  const victims = Object.keys(model.victims).sort();
+  const ovs = [...model.ovs.values()].sort((a, b) => a.port.localeCompare(b.port));
+  const victims = [...model.victims.keys()].sort();
 
   return (
     <section aria-labelledby="la-h">
@@ -136,7 +136,7 @@ export function LiveAttackPage() {
         <label className="field">
           Victim
           <select value={shown ?? ""} onChange={(e) => setVictim(e.target.value)}>
-            {victims.map((v) => <option key={v} value={v}>{v}{model.open[v] ? " (alert)" : ""}</option>)}
+            {victims.map((v) => <option key={v} value={v}>{v}{model.open.has(v) ? " (alert)" : ""}</option>)}
           </select>
         </label>
       )}
