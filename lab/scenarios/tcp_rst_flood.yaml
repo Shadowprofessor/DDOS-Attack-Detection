@@ -1,0 +1,7 @@
+id: tcp_rst_flood
+name: TCP RST flood
+attack: true
+mitre: [T1498.001]
+description: High-rate TCP RST segments from lab attacker hosts to the victim's port 443, attempting to disrupt or tear down sessions.
+profile: {protocol: tcp_rst, rate_pps: 1500, duration_s: 60, sources: 50, source_role: attacker, dst_port: 443, packet_size: 60}
+expected: {incident: true, family: other, layers: [L1], max_mttd_s: 30}

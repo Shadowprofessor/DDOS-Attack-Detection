@@ -1,0 +1,7 @@
+id: tcp_ack_flood
+name: TCP ACK flood
+attack: true
+mitre: [T1498.001]
+description: Unsolicited TCP ACK segments (no handshake) from lab attacker hosts to the victim's port 443, forcing state-table lookups and RST replies.
+profile: {protocol: tcp_ack, rate_pps: 1500, duration_s: 60, sources: 50, source_role: attacker, dst_port: 443, packet_size: 60}
+expected: {incident: true, family: other, layers: [L1], max_mttd_s: 30}

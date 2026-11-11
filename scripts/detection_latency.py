@@ -188,15 +188,20 @@ def main() -> None:  # pragma: no cover - CLI
     from src.eval.lab_analysis import build_aggregate, flows_from_pcap
 
     ap = argparse.ArgumentParser(description="Detection latency + MTTD from a real lab run")
-    ap.add_argument("run_dir")
+    ap.add_argument("run_dirs", nargs="+")
     ap.add_argument("--per-scenario", type=int, default=200)
     args = ap.parse_args()
-    run_dir = Path(args.run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    runs = manifest["runs"]
+    from src.eval.lab_analysis import model_fingerprint
+
+    fp = model_fingerprint()
+    pairs = []
+    for rd in args.run_dirs:
+        run_dir = Path(rd)
+        for run in json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["runs"]:
+            pairs = [(d, r) for d, r in pairs if r["scenario"] != run["scenario"]] + [(run_dir, run)]  # later run wins
 
     sample, aggregates, mttd = [], [], []
-    for run in runs:
+    for run_dir, run in pairs:
         flows = flows_from_pcap(run_dir / run["pcap"])
         flows_sorted = sorted(flows, key=lambda f: f["end"])
         step = max(1, len(flows_sorted) // args.per_scenario)
@@ -204,7 +209,7 @@ def main() -> None:  # pragma: no cover - CLI
         target = (run.get("generator") or {}).get("target")
         aggregates.append(build_aggregate(run["scenario"], [f for f in flows if f["dst"] == target] or flows,
                                           run["started_at"], max(1.0, run["ended_at"] - run["started_at"])))
-        cache = run_dir / "scores" / f"{run['scenario']}.json"
+        cache = run_dir / "scores" / fp / f"{run['scenario']}.json"
         scores = json.loads(cache.read_text()) if cache.is_file() else []
         firsts = first_alerts(flows_sorted, scores, run["started_at"]) if len(scores) == len(flows_sorted) else \
             {k: "no cached scores" for k in LAYERS}
@@ -213,7 +218,7 @@ def main() -> None:  # pragma: no cover - CLI
             idx = [i for i, s in enumerate(scores) if s.get("label") != "unscored"]
             ml_every = (idx[1] - idx[0]) if len(idx) > 1 else 1
         l3 = l3_first_alert(flows, run["started_at"], run["ended_at"], target)
-        mttd.append({"scenario": run["scenario"], "flows": len(flows), "ml_scored_every_k_flows": ml_every,
+        mttd.append({"scenario": run["scenario"], "run": run_dir.name, "flows": len(flows), "ml_scored_every_k_flows": ml_every,
                      **{f"{k}_first_alert_s": v for k, v in firsts.items()},
                      "L3_first_alert_s": l3["t_s"], "L3_attack_type": l3["attack_type"],
                      "scenario_duration_s": round(run["ended_at"] - run["started_at"], 1)})
@@ -226,7 +231,7 @@ def main() -> None:  # pragma: no cover - CLI
         l3_lat = bench({"L3_rule": lambda a: rule_based_analysis(IncidentAggregate.model_validate(a))},
                        [a for a in aggregates for _ in range(150)], warmup=20)["L3_rule"]
     warn_kinds = sorted({f"{w.category.__name__}: {str(w.message)[:160]}" for w in caught})
-    report = {"run": run_dir.name, "hardware": hardware(), "flows_benchmarked": len(sample),
+    report = {"run": ",".join(sorted({d.name for d, _ in pairs})), "model_fingerprint": fp, "hardware": hardware(), "flows_benchmarked": len(sample),
               "ood_model_backed": ood_model, "processing_latency": lat, "l3_rule_per_incident": l3_lat,
               "warnings_during_benchmark": warn_kinds, "mttd": mttd}
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)

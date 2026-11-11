@@ -106,10 +106,13 @@ def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer
     agg = build_aggregate(run["scenario"], to_victim, t0, max(1.0, run["ended_at"] - t0))
     try:
         l3 = rule_based_analysis(IncidentAggregate.model_validate(agg))
-        l3_attack, l3_family = l3.attack_type, family_from_text(l3.attack_type)
+        l3_attack = l3.attack_type
     except Exception as e:  # malformed aggregate (e.g. no flows)
-        l3_attack, l3_family = f"error: {type(e).__name__}", "other"
+        l3_attack = f"error: {type(e).__name__}"
     l3_hit = not l3_attack.startswith("Benign") and not l3_attack.startswith("error")
+    # A family only counts when L3 actually named an attack ("Benign" would otherwise map to "other"
+    # and falsely match scenarios that expect family "other").
+    l3_family = family_from_text(l3_attack) if l3_hit else None
     detected_at = [t for t in first.values() if t is not None]
     incident = l3_hit or bool(detected_at)
     n = len(flows)
@@ -202,7 +205,7 @@ def coverage_markdown(results: List[dict], containment: Optional[dict]) -> str:
         mttd = "—" if r["mttd_s"] is None else f"{r['mttd_s']:.1f}"
         mttd2 = "—" if r["mttd_with_idle_export_s"] is None else f"{r['mttd_with_idle_export_s']:.1f}"
         rows.append(f"| `{r['scenario']}` | **{r['outcome']}** | {exp} | {', '.join(r['observed_layers']) or 'none'} | "
-                    f"{r['l3_family']} | {rate} | {mttd} | {mttd2} |")
+                    f"{r['l3_family'] or '—'} | {rate} | {mttd} | {mttd2} |")
     if containment:
         rows += ["", f"Containment probe to {containment['probe']} (TEST-NET-1) with a NAT path deliberately open: "
                  f"nftables drops {containment['drops_before']} → {containment['drops_after']}, packets seen on "
@@ -232,47 +235,64 @@ def navigator_layer(results: List[dict], scenarios: Dict) -> dict:
     }
 
 
+def model_fingerprint() -> str:
+    """Short id of the model artifacts in use, so cached per-flow scores are never reused across models."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for p in sorted((REPO / "models").glob("*")):
+        if p.is_file() and p.suffix in (".pkl", ".joblib", ".json", ".pt"):
+            st = p.stat()
+            h.update(f"{p.name}:{st.st_size}:{int(st.st_mtime)}".encode())
+    return h.hexdigest()[:12]
+
+
 def main() -> None:  # pragma: no cover - CLI
     import argparse
 
     from lab.library import load_scenarios
 
     ap = argparse.ArgumentParser(description="Analyse Mininet lab pcaps with the real detection stack")
-    ap.add_argument("run_dir")
+    ap.add_argument("run_dirs", nargs="+", help="one or more data/lab_runs/<run> directories (merged)")
     args = ap.parse_args()
-    run_dir = Path(args.run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     scs = load_scenarios()
     scorer = real_scorer()
-    results = []
-    cache_dir = run_dir / "scores"
-    cache_dir.mkdir(exist_ok=True)
-    for run in manifest.get("runs", []):
-        sc = scs[run["scenario"]]
-        flows = flows_from_pcap(run_dir / run["pcap"])
-        cache = cache_dir / f"{run['scenario']}.json"
-        cached = json.loads(cache.read_text()) if cache.is_file() else None
-        if cached and len(cached) == len(flows):  # per-flow scores reused; only aggregation re-runs
-            it = iter(cached)
-            use = lambda *a, **k: next(it)  # noqa: E731
-        else:
-            store: list = []
+    fp = model_fingerprint()
+    results, containment, runs_used = [], None, []
+    for rd in args.run_dirs:
+        run_dir = Path(rd)
+        manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        containment = manifest.get("containment") or containment  # latest run with a containment proof
+        runs_used.append(run_dir.name)
+        cache_dir = run_dir / "scores" / fp
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for run in manifest.get("runs", []):
+            sc = scs[run["scenario"]]
+            flows = flows_from_pcap(run_dir / run["pcap"])
+            cache = cache_dir / f"{run['scenario']}.json"
+            cached = json.loads(cache.read_text()) if cache.is_file() else None
+            if cached and len(cached) == len(flows):  # per-flow scores reused; only aggregation re-runs
+                it = iter(cached)
+                use = lambda *a, _it=it, **k: next(_it)  # noqa: E731
+            else:
+                store: list = []
 
-            def use(*a, _s=store, **k):
-                r = scorer(*a, **k)
-                _s.append(r)
-                return r
-        results.append(analyse_run(run, sc.expected.model_dump(), flows, use))
-        if not (cached and len(cached) == len(flows)):
-            cache.write_text(json.dumps(store))
-        print(results[-1]["scenario"], results[-1]["outcome"], results[-1]["observed_layers"], results[-1]["mttd_s"],
-              f"flows={results[-1]['flows']} ml_scored={results[-1]['ml_scored_flows']}", flush=True)
+                def use(*a, _s=store, **k):
+                    r = scorer(*a, **k)
+                    _s.append(r)
+                    return r
+            res = analyse_run(run, sc.expected.model_dump(), flows, use)
+            res["run"] = run_dir.name
+            results = [r for r in results if r["scenario"] != res["scenario"]] + [res]  # later run wins
+            if not (cached and len(cached) == len(flows)):
+                cache.write_text(json.dumps(store))
+            print(res["scenario"], res["outcome"], res["observed_layers"], res["mttd_s"],
+                  f"flows={res['flows']} ml_scored={res['ml_scored_flows']} run={run_dir.name}", flush=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    report = {"run": run_dir.name, "switch": manifest.get("switch"), "containment": manifest.get("containment"),
-              "results": results}
+    report = {"runs": runs_used, "model_fingerprint": fp, "containment": containment, "results": results}
     (OUT_DIR / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (OUT_DIR / "navigator_layer.json").write_text(json.dumps(navigator_layer(results, scs), indent=2), encoding="utf-8")
-    (OUT_DIR / "coverage.md").write_text(coverage_markdown(results, manifest.get("containment")), encoding="utf-8")
+    (OUT_DIR / "coverage.md").write_text(coverage_markdown(results, containment), encoding="utf-8")
     print("wrote", OUT_DIR)
 
 
