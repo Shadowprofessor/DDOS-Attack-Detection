@@ -52,7 +52,8 @@ def build_aggregate(sid: str, flows: List[dict], t0: float, window_s: float) -> 
     tcp_pk = proto.get("tcp", 0) or 1
     sizes = sorted(f["bytes"] / max(1, f["packets"]) for f in flows)
     w = max(1.0, window_s)
-    http = [f for f in flows if f["dport"] in (80, 443)]
+    # An HTTP request needs client payload: bare handshakes to 80/443 (a SYN flood) are not HTTP (v5.1.0).
+    http = [f for f in flows if f["dport"] in (80, 443) and f.get("fwd_bytes", f["bytes"]) > 0]
     slow = [f for f in http if (f["end"] - f["start"]) >= 10.0
             and f.get("fwd_bytes", f["bytes"]) / max(1e-6, f["end"] - f["start"]) <= 50.0]  # LowSlowDetector rule
     l7 = {"http_rps": round(len(http) / w, 3), "slow_connections": len(slow)} if http else None
