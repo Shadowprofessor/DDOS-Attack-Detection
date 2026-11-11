@@ -5,3 +5,5 @@
 ccec28998b564c2231f36a179b55c0bec12b56c1:docs/DEMO.md:curl-auth-header:19
 # fake test-only key in the v5.1.0 analyst test (replaced with a placeholder in a later commit)
 819c00db9e06ecfa4cc24b1e93044a6ff1cee503:tests/test_analyst_model_config.py:generic-api-key:73
+# fake test-only key in the v5.2.0 live API test (replaced with a placeholder in a later commit)
+2a0757b7350cb948613ca5143fd005827e4448ea:tests/test_live_api.py:generic-api-key:12

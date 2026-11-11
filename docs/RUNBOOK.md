@@ -13,6 +13,7 @@ Node 24). Outputs below are from those runs.
 | E. Mininet purple-team lab | **yes** | **yes** | — | ~11 min |
 | F. Analyse lab pcaps | — | — | **yes** | ~25 min first time, ~7 min after |
 | G. Full test suite | — | — | optional | ~3–5 min |
+| H. Live demo (Mininet → SOC in real time) | **yes** | **yes** | **yes** | ~7 min |
 
 ¹ `models/*.pkl|.joblib` are gitignored (see README → "Getting the data"). Without them the API
 falls back to a DummyClassifier: everything runs, but L2 verdicts are not meaningful.
@@ -210,3 +211,63 @@ skipped one is the opt-in screenshot capture. Playwright starts its own server o
 a temporary DB.
 
 **Stop:** `Ctrl+C`.
+
+---
+
+## H. Live demo: Mininet attack → SOC website in real time (v5.2.0)
+
+Three terminals. The WSL side writes each scenario's pcap packet by packet (`tcpdump -U`) and the
+switch's port counters (`ovs-ofctl dump-ports`, read-only) into `data/lab_runs/<run>/` on the
+Windows disk. The Windows bridge tails those files and feeds the running platform through its API.
+**No WSL2 ↔ Windows network path is used**, so nothing in `.wslconfig` or the firewall has to
+change, and uvicorn stays bound to `127.0.0.1`.
+
+**1. Platform (Windows PowerShell).** Stop any older server on port 8000 first (it would not have the
+live API):
+```powershell
+$env:DDOS_API_KEYS  = "demo-analyst-key-01"
+$env:DDOS_ADMIN_KEYS = "demo-admin-key-0001"
+python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000
+```
+Open **http://localhost:8000/app/live-attack** and sign in with `demo-analyst-key-01`.
+
+**2. Bridge (second Windows terminal).** Start it *before* the lab run; it ignores pcaps that already exist:
+```powershell
+$env:DDOS_LIVE_KEY = "demo-analyst-key-01"
+python scripts/live_bridge.py data/lab_runs/live1 --reset
+```
+Expected: `platform http://127.0.0.1:8000: {'status': 'ok', ...}` then `watching data\lab_runs\live1 ...`.
+
+**3. Lab (WSL Ubuntu terminal, sudo).**
+```bash
+cd "/mnt/c/Users/Sachit Sharma/Documents/Sachit Main/DDoS-Detection-clean"
+sudo bash lab/live_demo.sh live1
+```
+The sequence is benign → SYN flood → ICMP flood → flash crowd → UDP flood, with 15 s gaps
+(`DEMO_SCENARIOS` / `DEMO_GAP` override it). It takes about 7 minutes: containment proof ~30 s,
+then 60 s per scenario.
+
+What appears, and when:
+- **Within ~1–4 s of each flood starting:** the red "Attack in progress" banner, with the L1 rule
+  and its numbers, the pps/bps spike, top attackers, and the protocol/flag mix.
+- **Within ~1 s more:** a `[LIVE]` incident in the Incidents list. The rule analyst's (or Nemotron's)
+  verdict is on the incident page.
+- **About every 2 s:** OVS port counters per switch port, with the lab host on it.
+- **5 quiet seconds after a flood ends:** the banner clears and the alert history shows how long it
+  lasted.
+- **Benign and flash-crowd phases:** no banner is expected. Any banner there is a false positive and
+  is reported as one.
+
+**Afterwards:** `python scripts/live_mttd.py data/lab_runs/live1` writes the real-time MTTD table
+into `docs/DETECTION_LATENCY.md` and `docs/eval/live/results.json`.
+
+**Stop:**
+- `touch lab/KILL` in a second WSL terminal stops the generator within one tick; then `rm lab/KILL`.
+- `Ctrl+C` in the bridge and server terminals.
+- Nothing is ever blocked automatically. Any mitigation the platform proposes stays **PENDING**
+  on Approvals until an admin approves it.
+
+**Without WSL** (pipeline check only, recorded traffic): `python scripts/pcap_replay_live.py
+data/lab_runs/run2/syn_flood.pcap --out data/lab_runs/replay1` re-writes a recorded pcap into a
+growing file at real-time pace for the bridge. It sends no packets. Label any numbers from it as
+*replay*, not live.

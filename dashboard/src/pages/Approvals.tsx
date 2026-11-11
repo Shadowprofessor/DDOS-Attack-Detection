@@ -53,7 +53,8 @@ export function ApprovalsPage() {
   return (
     <section aria-labelledby="ap-h">
       <h1 id="ap-h">Approvals</h1>
-      {!admin && <p className="muted">Read-only: only admins can approve, reject or extend.</p>}
+      {!admin && <p className="banner banner-warn">You are signed in as an <strong>analyst</strong>: you can see every proposal, but only an
+        admin can approve, reject or extend. Sign out and sign in with an admin key to act.</p>}
       {msg && <p role={msg.ok ? "status" : "alert"} className={msg.ok ? "ok" : "error"}>{msg.text}</p>}
 
       <h2>Pending ({queue.length})</h2>

@@ -181,3 +181,22 @@ a.btn { text-decoration: none; display: inline-block; }
 /* grid cells align; vertical spacing only between stacked (non-grid) cards */
 .grid > .card + .card { margin-top: 0; }
 .badge-degraded { color: var(--amber); border-color: var(--amber); }
+
+/* v5.2.0: live attack view */
+.banner { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem 1rem; margin-bottom: 1rem; background: var(--surface); overflow-wrap: anywhere; }
+.banner ul { margin: 0.4rem 0 0; padding-left: 1.25rem; }
+.banner-critical { border-color: var(--critical); background: rgb(248 113 113 / 0.12); }
+.banner-warn { border-color: var(--amber); background: rgb(255 186 8 / 0.10); }
+.banner-ok { color: var(--muted); }
+.chart { margin: 0 0 0.75rem; }
+.chart figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.25rem; }
+.chart svg { width: 100%; height: 150px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.chart .axis { stroke: var(--border); stroke-width: 1; }
+.chart .series { stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart .series-pps { stroke: var(--cyan); }
+.chart .series-bps { stroke: var(--violet); }
+.mix { display: grid; gap: 0.25rem; margin: 0 0 0.75rem; }
+.mix > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); align-items: center; gap: 0.5rem; }
+.mix dt { color: var(--muted); font-size: 0.85rem; }
+.mix dd { margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+.mix meter { flex: 1; min-width: 0; height: 0.8rem; }

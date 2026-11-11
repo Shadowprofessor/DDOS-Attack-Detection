@@ -1,4 +1,4 @@
-# Detection time: processing latency and MTTD (v5.0.1, updated v5.1.0)
+# Detection time: processing latency and MTTD (v5.0.1, updated v5.1.0, live v5.2.0)
 
 Two different questions, measured separately and **from real data**: no estimates.
 
@@ -50,6 +50,60 @@ Measured on **Intel64 Family 6 Model 183 Stepping 1, GenuineIntel** (28 logical 
 
 \* L2/OOD were scored on every k-th flow in the lab analysis (k shown in `results.json`), so their first-alert times are upper bounds.
 <!-- LATENCY:END -->
+
+## Real-time MTTD: live demo (v5.2.0)
+
+Attack start → first alert **on the website**, measured from a live Mininet run while the attack
+was running. Pcaps were tailed as tcpdump wrote them, L1 was evaluated on 1 s windows by the
+platform, and alerts were pushed over `/ws/live`. Reproduce with block H of `docs/RUNBOOK.md`, then
+`python scripts/live_mttd.py data/lab_runs/<run>`.
+
+<!-- LIVE:START -->
+Two live Mininet runs (2026-11-12), victim `10.99.0.10`, same sequence, containment `contained` in
+both. Seconds from scenario start (WSL2 clock). Raw numbers: [`docs/eval/live/results.json`](eval/live/results.json).
+
+| Scenario | Attack? | First alerting 1 s window | **Alert on website** | Incident opened | Alert stayed on | L3 verdict | L2 (ML) attack verdict* | Offline L1 MTTD |
+|---|---|---:|---:|---:|---|---|---:|---:|
+| **live2 (after the timing fix)** | | | | | | | | |
+| `benign_baseline` | no | — | no alert (correct) | — | — | — | none (correct) | 0.6 (false positive offline) |
+| `syn_flood` | yes | 1.74 | **5.83** | 5.86 | 58.8 s of 60.6 s, 1 alert | SYN flood (Nemotron Lightning) | not detected | 1.0 |
+| `icmp_flood` | yes | 2.02 | **3.89** | 3.93 | 60.7 s of 60.7 s, 1 alert | ICMP flood (Nemotron Lightning) | not detected | 55.8 |
+| `flash_crowd` | no | — | no alert (correct) | — | — | — | none (correct) | 0.5 (false positive offline) |
+| `udp_flood` | yes | 1.92 | **3.77** | 3.82 | 61.0 s of 60.8 s, 1 alert | **Benign / flash crowd** (Nemotron Lightning, wrong) | 10.27 | 1.3 |
+| **live1 (before the fix)** | | | | | | | | |
+| `syn_flood` | yes | 2.09 | 4.69 | 4.72 | **4.9 s** of 60.6 s, then cleared | Benign / insufficient evidence (rules) | not detected | 1.0 |
+| `icmp_flood` | yes | 1.37 | 2.95 | 2.98 | 14.0 s in 2 alerts | ICMP flood (rules) | not detected | 55.8 |
+| `udp_flood` | yes | 1.65 | 3.39 | 3.43 | 17.9 s in 2 alerts | UDP flood (rules) | 11.41 | 1.3 |
+
+live1's benign and flash-crowd rows were the same as live2's (no alert). \* L2 = an "attack" verdict from the
+ML ensemble on a sampled flow to the victim (`/score/flow`, 1.5 flows/s), so an upper bound.
+
+**What this shows:**
+- **Alert on the website 3.8–5.8 s after an attack starts.** About 2 s of that is the detector
+  (the first 1 s window over the threshold, plus ramp-up). The other ~2 s is getting the packets
+  from WSL2 to Windows: tcpdump's writes become visible on the shared disk in bursts (window post
+  lag p50 2.3 s). Incidents open ~0.05 s after the alert.
+- **ICMP: 3.9 s live vs 55.8 s offline.** Offline, a flow is only judged when it ends, and an ICMP
+  flood is 20 flows lasting the whole attack. Live windows don't wait for flows.
+- **No live alert on benign or flash crowd** in either run. The offline flow-based L1 fired on
+  both (0.6 s / 0.5 s).
+- **The fix:** in live1 the alert cleared after 5–18 s of a 60 s flood. Late-arriving packets were
+  closed as empty windows. In live2 each flood is one alert for its whole duration, with 0 late
+  packets.
+- **L3:** in live2 the server had `NVIDIA_API_KEY`, so Nemotron 3.5 Lightning analysed each
+  incident. It named the SYN and ICMP floods but called the **UDP flood "Benign / flash crowd"**.
+  The rule analyst (live1) named UDP and ICMP but not SYN. Neither is reliable on its own.
+- **Rate corroboration in `/score/flow` is a false-positive source:** it called sampled benign and
+  flash-crowd flows "attack" 16–20 s into those phases, in both runs, while the ML said Benign. The
+  Live Attack view labels these "rate corroboration", never ML. To be fixed in v5.3.0.
+- **live2 window post lag max 12.9 s:** the bridge waited on the LLM analysis (5 s timeout) inside
+  its loop. The analysis now runs in a background thread with a 120 s timeout. That change is
+  tested but not yet re-measured in a lab run.
+
+**Clocks:** the alert time is on the Windows clock, the scenario start on the WSL2 clock. The
+smallest observed (Windows − WSL2 packet) gap was 0.05 s (live2) / 0.15 s (live1), an upper bound
+on the skew.
+<!-- LIVE:END -->
 
 ## Summary
 

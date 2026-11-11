@@ -25,7 +25,8 @@ export function AnalystPage() {
   const [msg, setMsg] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const ask = useMutation({
-    mutationFn: (text: string) => api<ChatReply>("/api/chat", { method: "POST", body: json({ message: text }) }),
+    mutationFn: (v: { text: string; history: { role: "user" | "assistant"; text: string }[] }) =>
+      api<ChatReply>("/api/chat", { method: "POST", body: json({ message: v.text, history: v.history, incident_id: incidentId || undefined }) }),
     onSuccess: (r) => setTurns((t) => [...t, { role: "assistant", text: r.response, meta: `${r.authority}${r.model ? ` · ${r.model}` : ""}` }]),
     onError: (e) => setTurns((t) => [...t, { role: "assistant", text: e instanceof ApiError ? e.message : "Request failed.", meta: "error" }]),
   });
@@ -34,10 +35,11 @@ export function AnalystPage() {
     e.preventDefault();
     const text = msg.trim();
     if (!text) return;
-    const scoped = incidentId ? `[incident ${incidentId}] ${text}` : text;
+    const history = turns.filter((t) => t.meta !== "error").slice(-8)
+      .map((t) => ({ role: t.role === "you" ? ("user" as const) : ("assistant" as const), text: t.text }));
     setTurns((t) => [...t, { role: "you", text }]);
     setMsg("");
-    ask.mutate(scoped);
+    ask.mutate({ text, history });
   };
 
   const a = detail.data?.analysis;
@@ -45,7 +47,9 @@ export function AnalystPage() {
     <section aria-labelledby="an-h">
       <h1 id="an-h">AI analyst</h1>
       <p className="muted">
-        Read-only assistant. It answers from telemetry and cannot approve, block or change anything. Requests to do so are refused.
+        Ask anything: what is happening on the network, how to respond to an incident, how to secure the network.
+        It recommends steps and commands for you to review; it cannot approve, block or change anything itself.
+        Approving a block is done by an admin on the Approvals page.
       </p>
       <div className="grid two">
         <div className="card">
@@ -76,7 +80,7 @@ export function AnalystPage() {
                 <p>{t.text}</p>
               </li>
             ))}
-            {turns.length === 0 && <li className="muted">Ask about detections, campaigns or an incident.</li>}
+            {turns.length === 0 && <li className="muted">e.g. “What is attacking 10.99.0.10 right now and what should I do?” or “How do I harden the network against SYN floods?”</li>}
           </ol>
           <form onSubmit={onSubmit} className="row">
             <label className="field grow">

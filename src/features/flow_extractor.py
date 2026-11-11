@@ -721,6 +721,11 @@ class FlowExtractor:
             self._flows.clear()
         return flows
 
+    def active_flows(self) -> List[Flow]:
+        """Snapshot list of the flows still open (the flows stay in the table)."""
+        with self._lock:
+            return list(self._flows.values())
+
     @property
     def active_flow_count(self) -> int:
         """Number of currently tracked flows."""

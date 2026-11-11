@@ -3,6 +3,7 @@
 FastAPI Router for Real-time Dashboard and WebSocket Telemetry Stream.
 """
 import os
+import re
 from fastapi import APIRouter, WebSocket, Request, Depends, HTTPException
 
 from src.web.realtime_dashboard.broadcaster import get_broadcaster
@@ -97,9 +98,9 @@ def _get_chat_limiter():
 @router.post("/api/chat")
 async def chat_with_soc_assistant(request: Request, key: str = Depends(_require_api_key)):
     """
-    Read-only advisory chat endpoint.
-    Answers operator questions grounded in live telemetry via Nemotron 3 Ultra.
-    ZERO execution authority — cannot approve or execute mitigation actions.
+    Read-only advisory chat: answers any operator question (live state, incident response, securing
+    the network) via Nemotron, with a rule-based fallback. Optional `history` (last turns) and
+    `incident_id` (scope). ZERO execution authority: cannot approve or execute mitigation actions.
     """
     import hashlib
     if not _get_chat_limiter().allow(hashlib.sha256(key.encode("utf-8")).hexdigest()):
@@ -108,9 +109,19 @@ async def chat_with_soc_assistant(request: Request, key: str = Depends(_require_
         body = await request.json()
     except Exception:
         body = {}
-    message = str(body.get("message", ""))[:2000] if isinstance(body, dict) else ""
+    if not isinstance(body, dict):
+        body = {}
+    message = str(body.get("message", ""))[:2000]
+    history = []
+    raw_hist = body.get("history")
+    if isinstance(raw_hist, list):
+        for t in raw_hist[-8:]:
+            if isinstance(t, dict) and t.get("role") in ("user", "assistant") and isinstance(t.get("text"), str):
+                history.append({"role": t["role"], "text": t["text"][:2000]})
+    inc = body.get("incident_id")
+    incident_id = inc if isinstance(inc, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", inc) else None
     from src.agent.soc_chat_assistant import get_soc_chat_assistant
     assistant = get_soc_chat_assistant()
-    return assistant.answer_query(message)
+    return assistant.answer_query(message, history=history, incident_id=incident_id)
 
 

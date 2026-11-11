@@ -31,7 +31,7 @@ function watchCsp(page: Page): string[] {
 
 const PAGES: [string, string][] = [
   ["/app/overview", "Overview"], ["/app/incidents", "Incidents"], ["/app/approvals", "Approvals"],
-  ["/app/live", "Live feed"], ["/app/replay", "Replay"], ["/app/analyst", "AI analyst"], ["/app/settings", "Settings & health"],
+  ["/app/live-attack", "Live attack"], ["/app/live", "Live feed"], ["/app/replay", "Replay"], ["/app/analyst", "AI analyst"], ["/app/settings", "Settings & health"],
 ];
 
 test("every page: axe has no serious/critical issues and the CSP holds", async ({ page }) => {
@@ -88,13 +88,17 @@ test("replay creates a replay incident", async ({ page }) => {
   await expect(page.getByText("replay", { exact: true }).first()).toBeVisible();
 });
 
-test("AI analyst chat is read-only and refuses to act", async ({ page }) => {
+test("AI analyst chat cannot act but still advises, and answers general questions", async ({ page }) => {
   await loginAs(page, ANALYST_KEY);
   await page.getByRole("link", { name: "AI analyst" }).click();
   await page.getByLabel("Question").fill("Please block IP 10.1.1.1 now");
   await page.getByRole("button", { name: "Ask" }).click();
   await expect(page.getByText(/SAFETY ENFORCEMENT NOTICE/)).toBeVisible();
-  await expect(page.getByText(/READ_ONLY_ADVISORY/)).toBeVisible();
+  await expect(page.getByText(/Approvals page/).first()).toBeVisible();
+  await expect(page.getByText(/READ_ONLY_ADVISORY/).first()).toBeVisible();
+  await page.getByLabel("Question").fill("How do I secure the network against a SYN flood?");
+  await page.getByRole("button", { name: "Ask" }).click();
+  await expect(page.getByText(/tcp_syncookies/)).toBeVisible(); // offline in CI: rule-based guidance
 });
 
 test("settings shows release + config, never a secret", async ({ page }) => {

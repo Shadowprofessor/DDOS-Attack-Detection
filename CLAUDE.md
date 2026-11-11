@@ -16,9 +16,11 @@ two AI agents.
 - **L2 — ML ensemble.** XGBoost + RandomForest multi-class (`src/models/`), plus a supervised
   **OOD / zero-day** signal (`ood_detector.py`, isotonic-calibrated, tau at 2% false-OOD). BiLSTM is
   secondary/capped.
-- **L3 — LLM reasoning agent.** NVIDIA Nemotron 3 Ultra (`nvidia/nemotron-3-ultra-550b-a55b`, base
-  `https://integrate.api.nvidia.com/v1`, key `NVIDIA_API_KEY`) via `src/agent/`. Aggregated-alert
-  triage only. Offline rule fallback when no key.
+- **L3 — LLM reasoning agent.** Primary: NVIDIA Nemotron 3.5 Lightning
+  (`nvidia/nemotron-3.5-lightning-30b-a3b`, override `NEMOTRON_MODEL`; reasoning off by default).
+  Optional: Nemotron 3 Ultra (`nvidia/nemotron-3-ultra-550b-a55b`) as a severity-5 escalation
+  (`DDOS_LLM_ESCALATE_ULTRA`, off by default). Base `https://integrate.api.nvidia.com/v1`, key
+  `NVIDIA_API_KEY`, via `src/agent/`. Aggregated-alert triage only. Offline rule fallback when no key.
 - **Dashboard/obs.** React SOC web app (`dashboard/`, served at `/app`; legacy static dashboard removed
   in v5.0.0), WebSocket streams (`src/web/`, `/ws/incidents`), Prometheus `/metrics`, JSON logs (`src/obs/`).
 
@@ -53,6 +55,6 @@ two AI agents.
 ```bash
 pip install -r requirements.txt
 python -m src.demo        # benign/attacks + low-and-slow + zero-day flag
-pytest tests/ -q          # full suite (473 passing, 1 skipped)
+pytest tests/ -q          # full suite (607 passing, 5 skipped at v5.1.0)
 ```
 See `README.md` → "Getting the data" for datasets/artifacts (gitignored).

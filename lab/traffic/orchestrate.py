@@ -3,6 +3,7 @@
 LAB-ONLY orchestrator (v4.6.1). Run as root inside WSL2:
 
     sudo python3 -m lab.traffic.orchestrate --out data/lab_runs/<run-id> [--scenarios all] [--containment]
+                                            [--gap 3] [--ovs-poll]   # v5.2.0 live demo
 
 Builds an isolated Mininet LAN (10.99.0.0/24, one switch, no controller, NO NAT, no route out),
 starts plain HTTP on the victim, then for each scenario: starts a pcap capture on the victim's
@@ -60,7 +61,20 @@ def build_net(scope, switch: str, with_nat: bool = False):  # pragma: no cover -
     return net, hosts
 
 
-def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_result=None) -> list:  # pragma: no cover
+def switch_port_roles(hosts) -> dict:  # pragma: no cover - needs Mininet
+    """{"s1-eth1": "client", ...}: which lab host sits on each switch port (for the OVS counters)."""
+    roles = {}
+    for role, h in hosts.items():
+        for intf in h.intfList():
+            link = getattr(intf, "link", None)
+            if link is not None:
+                other = link.intf2 if link.intf1 is intf else link.intf1
+                roles[other.name] = role
+    return roles
+
+
+def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_result=None,
+                  on_start=None) -> list:  # pragma: no cover
     kill = KillSwitch.from_scope(scope)
     scs = load_scenarios()
     results = []
@@ -77,6 +91,8 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_re
         time.sleep(1.0)
         src_host = hosts[sc.profile.source_role]
         t0 = time.time()
+        if on_start:
+            on_start({"scenario": sid, "pcap": pcap.name, "started_at": t0})  # live demo: ground truth now
         raw = src_host.cmd(f"{env} python3 -m lab.traffic.generator --scenario {shlex.quote(sid)}")
         t1 = time.time()
         time.sleep(1.0)
@@ -154,6 +170,8 @@ def main() -> None:  # pragma: no cover
     ap.add_argument("--switch", choices=["ovs", "lxbr"], default="ovs")  # OVS is running in this WSL2
     ap.add_argument("--containment", action="store_true")
     ap.add_argument("--uplink", default="eth0")
+    ap.add_argument("--gap", type=float, default=3.0, help="seconds of quiet between scenarios")
+    ap.add_argument("--ovs-poll", action="store_true", help="write OVS port counters to <out>/ovs_ports.jsonl every 2 s")
     args = ap.parse_args()
     if os.geteuid() != 0:
         raise SystemExit("run with sudo inside WSL2")
@@ -176,13 +194,28 @@ def main() -> None:  # pragma: no cover
                 net.stop()
         if args.scenarios != "none":
             net, hosts = build_net(scope, args.switch)  # no NAT, no route out
+            poller = None
             try:
                 def save(rs):
                     manifest["runs"] = rs
+                    manifest.pop("current", None)
                     (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
-                manifest["runs"] = run_scenarios(net, hosts, scope, names, out, on_result=save)
+                def started(cur):
+                    manifest["current"] = cur
+                    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+                if args.ovs_poll and args.switch == "ovs":
+                    from lab.traffic.ovs_poll import OvsPoller
+
+                    manifest["switch_ports"] = switch_port_roles(hosts)
+                    poller = OvsPoller(out, roles=manifest["switch_ports"])
+                    poller.start()
+                manifest["runs"] = run_scenarios(net, hosts, scope, names, out, gap_s=args.gap,
+                                                 on_result=save, on_start=started)
             finally:
+                if poller:
+                    poller.stop()
                 net.stop()
     finally:
         manifest["ended"] = time.time()

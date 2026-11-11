@@ -527,6 +527,10 @@ from src.api.ir_router import router as ir_router  # noqa: E402  M3 incident-res
 
 app.include_router(ir_router)
 
+from src.api.live_router import router as live_router  # noqa: E402  v5.2.0 live attack view
+
+app.include_router(live_router)
+
 from src.api.session_router import router as session_router  # noqa: E402  v4.3.0 SOC web app
 from src.web import app_server as _soc_app  # noqa: E402
 
