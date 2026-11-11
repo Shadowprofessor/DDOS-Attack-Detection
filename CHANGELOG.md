@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] — 2026-11-11
+
+### BREAKING CHANGES
+- **Legacy dashboard removed.** `src/web/realtime_dashboard/static/` (HTML/JS/CSS) and the
+  standalone `Codes/dashboard/app.py` are gone. `/dashboard` and `/legacy` return **308 → `/app/`**,
+  `/` redirects to `/app/`, and `/dashboard/static/*` is 404. The JSON endpoints and the
+  `/ws/dashboard` stream are unchanged; the SOC app's live feed uses them.
+
+### Added
+- **Technical report** `REPORT.md`: architecture, design decisions, safety model, evaluation
+  (same-dataset vs cross-dataset vs lab, numbers as measured), threat hunts, limitations, future
+  work, references.
+- **GRC:** `docs/grc/control_mapping.md` (platform controls → NIST CSF 2.0, ISO/IEC 27001:2022
+  Annex A, CIS v8, CERT-In, MITRE D3FEND, each with evidence and coverage) and
+  `docs/grc/risk_register.md` (12 risks, likelihood × impact, inherent and residual).
+- **Citation check:** `scripts/check_citations.py` verifies every URL and arXiv id in REPORT,
+  README and the GRC/eval/lab docs resolves. Dead links fail; bot-blocked sites warn. New CI job
+  `Citation check`.
+- **60-second demo** `docs/DEMO.md`. README gains an architecture diagram, an updated version
+  history and roadmap, a web-app badge, and links to the report and GRC docs.
+
+### Changed
+- The bypass audit (`tests/test_mitigation_bypass.py`) now audits the React app. There is exactly
+  one approve call site (`Approvals.tsx`), reachable only from the confirmation dialog, through
+  the CSRF-carrying `api()` client. The guarantee is kept, not dropped.
+- The legacy `app.js` escaping test is replaced by a scan of the React app for raw-HTML sinks and
+  browser storage, plus the ESLint ban.
+- The live feed shows the **DEGRADED** badge and reason (previously only in the legacy UI).
+
+### Known issue
+- The opt-in live NIM test (`tests/test_nvidia_nim_live.py`, runs only with `NVIDIA_API_KEY`)
+  still fails at release time: the legacy agent's 60 s read timeout to `integrate.api.nvidia.com`
+  (after a 503 earlier). The rule-based fallback engages as designed. The timeout was not raised
+  just to make the test pass. CI does not run this test (no key).
+
 ## [4.7.0] — 2026-11-11
 
 ### Added — threat hunting + security self-assessment

@@ -697,8 +697,8 @@ def _score_single(X: np.ndarray) -> ScoringResult:
 # ---------------------------------------------------------------------------
 @app.get("/", include_in_schema=False)
 async def root_redirect():
-    """Redirect root path directly to SOC dashboard."""
-    return RedirectResponse(url="/dashboard")
+    """Redirect root path to the SOC web app."""
+    return RedirectResponse(url="/app/")
 
 @app.get("/health")
 async def health():

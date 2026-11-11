@@ -5,12 +5,24 @@
 [![CodeQL](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/codeql.yml/badge.svg)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/Shadowprofessor/DDOS-Attack-Detection)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Python 3.14](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)
+[![SOC Web App](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/webapp.yml/badge.svg)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/actions/workflows/webapp.yml)
 [![Security: Gated Mitigation](https://img.shields.io/badge/Security-Approval%20Gated-orange.svg)](src/mitigation/)
 
 An advanced, defense-in-depth Distributed Denial of Service (DDoS) detection, attacker forensics, and intelligent mitigation platform designed for Software-Defined Networks (SDN) and modern cloud edge infrastructures. All detection code is strictly defensive; attack-traffic generation is restricted to isolated local test harnesses targeting owned containers only. Mitigation actions require explicit human approval — no automatic execution.
 
-> ✅ **318 tests passing**; CI is green on a fresh clone via a DummyClassifier fallback.
+> ✅ **~590 pytest + 24 Vitest + 21 Playwright tests** in CI (fresh clone uses a DummyClassifier
+> fallback). Read the **[technical report](REPORT.md)** for the honest evaluation: strong
+> same-dataset numbers, inconclusive cross-dataset, and a real lab run where the ML missed a SYN
+> flood but the rules caught most attacks. **[60-second demo](docs/DEMO.md)**.
+
+```mermaid
+flowchart LR
+  T[Traffic] --> L1[L1 rules] --> L2[L2 ML + OOD] --> AGG[Incident aggregate] --> L3[L3 analyst<br/>recommends only]
+  L3 --> IR[Incident response<br/>lifecycle, playbooks, CERT-In]
+  IR -- propose --> GATE[Human approval gate] -- admin approves --> ENF[Enforcers]
+  IR --> UI[SOC web app /app]
+```
 
 ---
 
@@ -31,8 +43,9 @@ threshold calibrated to a 2% false-OOD rate.
 
 > **Scope:** these are **CIC-DDoS2019 only**, train vs. a *separate extraction* (`test_real_v2`)
 > with exact-duplicate rows removed. `test_real_v2` shares ~13k identical rows with the training
-> set, so it is the **same CIC-DDoS2019 recordings re-split, not an independent capture**. True
-> generalization (CIC-IDS2017 / UNSW-NB15) is measured in **M6**.
+> set, so it is the **same CIC-DDoS2019 recordings re-split, not an independent capture**.
+> Generalisation beyond it is **not established**: the CICIoT2023 check was inconclusive
+> (v4.4.0) and the ML missed the lab SYN flood (v4.6.1). See [REPORT.md](REPORT.md) §5.
 
 **Attack vs. benign (binary):**
 
@@ -199,7 +212,7 @@ all tested in CI.
 
 ---
 
-## 🖥️ SOC Web App (v4.3 – v4.5)
+## 🖥️ SOC Web App (v4.3 – v5.0)
 
 A React SOC console served at **`/app`**: login, an overview with KPIs and CERT-In countdowns,
 and a filterable incident list. It uses an HttpOnly session cookie, CSRF tokens and a strict CSP
@@ -212,6 +225,8 @@ cd dashboard && npm ci && npm run build   # then open http://localhost:8000/app
 Pages: overview, incidents, incident detail (AI recommendation panel, playbooks, timeline,
 MD/PDF export), approvals (admin), live feed, replay, AI analyst chat (read-only), and
 settings/health. Every page passes axe-core with 0 serious/critical issues and fits a 375 px screen.
+
+Governance & assurance: [control mapping](docs/grc/control_mapping.md) (NIST CSF 2.0, ISO 27001:2022, CIS v8, CERT-In, D3FEND) · [risk register](docs/grc/risk_register.md) · [STRIDE](docs/security/STRIDE.md).
 
 | Overview | Incident detail |
 |---|---|
@@ -245,11 +260,23 @@ Full reference (lifecycle diagram, RBAC matrix, CERT-In flow, rollback semantics
 
 ## 📋 Version History
 
-| Version | Tag | Description | Status |
-|---------|-----|-------------|--------|
-| v1.0 | [v1.0](#) | Verified Detection Core | Released |
-| v2.0 | [v2.0](#) | Intelligent Operations | Released |
-| v3.0 | [v3.0](#) | Production Hardened | Upcoming — Nov 15 2026 |
+| Version | What | Status |
+|---|---|---|
+| v4.0.x | Clean history; detection core; CI + supply-chain security | Released |
+| v4.1.x | Nemotron AI analyst (recommend-only); CodeQL fixes | Released |
+| v4.2.0 | Incident-response backend (NIST 800-61r3, playbooks, CERT-In, rollback, replay) | Released |
+| v4.3.x | SOC web app: sessions/CSRF/CSP, incidents, approvals, live updates | Released |
+| v4.4.0 | Cross-dataset evaluation (CICIoT2023): inconclusive, reported honestly | Released |
+| v4.5.0 | Remaining SOC pages, axe-clean, screenshots | Released |
+| v4.6.x | Purple-team lab: safety layer, then measured Mininet runs + containment | Released |
+| v4.7.0 | Threat hunts, STRIDE, bug hunt | Released |
+| **v5.0.0** | GRC control map + risk register, technical report, citation check, legacy dashboard removed | Released |
+
+Per-release details: [CHANGELOG.md](CHANGELOG.md) · [GitHub releases](https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases).
+
+**Roadmap (next):** retrain/adapt ML on lab + CICIoT2023 pcaps through our own extractor ·
+adaptive L1 baselines (fix flash-crowd false positives) · handshake-aware low-and-slow and
+source-port reflection rules · artifact hash pinning · per-user OIDC sign-in.
 
 ---
 
@@ -322,28 +349,18 @@ Per-environment configuration files live in [`config/environments/`](config/envi
 
 ## 📖 Operator Guide
 
-### 6a. SOC Dashboard
+### 6a. SOC web app
 
-**Opening the dashboard**: Navigate to `http://localhost:8000` after starting the scoring service.
+Open `http://localhost:8000/` (redirects to `/app/`) and sign in with an analyst or admin key.
+The old `/dashboard` page was removed in v5.0.0 and redirects to `/app/`. Pages and the security
+model: [`docs/SOC_APP.md`](docs/SOC_APP.md). Guided tour: [`docs/DEMO.md`](docs/DEMO.md).
 
-**What the live feed shows**:
-- Incoming alerts with real-time threat classification
-- Threat score (0–100) per detected flow
-- Attack class (SYN Flood, UDP Flood, DNS Amplification, etc.)
-- Attacker IP with GeoIP traceback (country, city, ISP, ASN)
-- `feature_completeness` flag indicating telemetry quality
-- LLM reasoning summary from the Nemotron agent (when available)
-
-**Approving a pending mitigation action**:
-1. Identify the pending action in the dashboard's mitigation queue
-2. Click the **Approve** button next to the action
-3. The action is confirmed to `PendingActionManager` → the appropriate enforcer executes the approved rule
-
-**Rejecting a pending action**:
-- Click **Reject** → action is discarded and logged to the incident report for audit trail
-
-**What `[DEGRADED INPUT]` means**:
-This flag appears when the system is operating with asymmetric or incomplete telemetry — for example, when using a single-interface eBPF ingress tap where backward-looking flow features (23 of 77 CICFlowMeter features) are unobserved. Detection still operates, but confidence scores are dampened and alerts are tagged accordingly.
+- **Approve / reject** pending mitigations on **Approvals** (admin). Every approval goes through a
+  confirmation dialog and `PendingActionManager.approve()`. Incident-linked blocks auto-revert
+  after 10 minutes unless extended with a reason.
+- **`DEGRADED`** on a live-feed row means the flow was scored with incomplete telemetry (for
+  example, a single-direction ingress tap leaves 23 of 77 CICFlowMeter features unobserved).
+  Hover to see the reason. Confidence is dampened accordingly.
 
 ### 6b. CLI Approval Workflow
 
