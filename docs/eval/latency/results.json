@@ -1,0 +1,147 @@
+{
+  "run": "run2",
+  "hardware": {
+    "os": "Windows 11",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "logical_cpus": 28,
+    "python": "3.14.6",
+    "ram_gb": 15.7,
+    "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU"
+  },
+  "flows_benchmarked": 1600,
+  "ood_model_backed": true,
+  "processing_latency": {
+    "L1": {
+      "n": 1600,
+      "p50_ms": 0.2752,
+      "p95_ms": 6.5098,
+      "p99_ms": 12.8069,
+      "mean_ms": 1.0092,
+      "max_ms": 29.4256
+    },
+    "L2": {
+      "n": 1600,
+      "p50_ms": 67.0104,
+      "p95_ms": 69.995,
+      "p99_ms": 71.1209,
+      "mean_ms": 67.1637,
+      "max_ms": 83.2541
+    },
+    "OOD": {
+      "n": 1600,
+      "p50_ms": 13.0926,
+      "p95_ms": 14.2195,
+      "p99_ms": 15.1507,
+      "mean_ms": 13.1525,
+      "max_ms": 16.6222
+    },
+    "end_to_end_per_flow": {
+      "n": 1600,
+      "p50_ms": 80.683,
+      "p95_ms": 87.0241,
+      "p99_ms": 94.5829,
+      "mean_ms": 81.3254,
+      "max_ms": 110.2135
+    }
+  },
+  "l3_rule_per_incident": {
+    "n": 1200,
+    "p50_ms": 0.1258,
+    "p95_ms": 0.1915,
+    "p99_ms": 0.2662,
+    "mean_ms": 0.1291,
+    "max_ms": 0.6748
+  },
+  "warnings_during_benchmark": [],
+  "mttd": [
+    {
+      "scenario": "benign_baseline",
+      "flows": 413,
+      "ml_scored_every_k_flows": 1,
+      "L1_first_alert_s": 0.637,
+      "L2_first_alert_s": null,
+      "OOD_first_alert_s": null,
+      "L3_first_alert_s": null,
+      "L3_attack_type": null,
+      "scenario_duration_s": 64.9
+    },
+    {
+      "scenario": "dns_reflection_sim",
+      "flows": 33885,
+      "ml_scored_every_k_flows": 23,
+      "L1_first_alert_s": 2.233,
+      "L2_first_alert_s": 2.235,
+      "OOD_first_alert_s": 0.889,
+      "L3_first_alert_s": 1.0,
+      "L3_attack_type": "UDP flood",
+      "scenario_duration_s": 60.8
+    },
+    {
+      "scenario": "flash_crowd",
+      "flows": 557,
+      "ml_scored_every_k_flows": 1,
+      "L1_first_alert_s": 0.536,
+      "L2_first_alert_s": null,
+      "OOD_first_alert_s": null,
+      "L3_first_alert_s": null,
+      "L3_attack_type": null,
+      "scenario_duration_s": 64.2
+    },
+    {
+      "scenario": "http_low_and_slow",
+      "flows": 300,
+      "ml_scored_every_k_flows": 1,
+      "L1_first_alert_s": 117.274,
+      "L2_first_alert_s": null,
+      "OOD_first_alert_s": null,
+      "L3_first_alert_s": 118.0,
+      "L3_attack_type": "Slowloris / low-and-slow HTTP (L7)",
+      "scenario_duration_s": 153.8
+    },
+    {
+      "scenario": "novel_ood_mix",
+      "flows": 31065,
+      "ml_scored_every_k_flows": 21,
+      "L1_first_alert_s": 1.405,
+      "L2_first_alert_s": 1.405,
+      "OOD_first_alert_s": 1.535,
+      "L3_first_alert_s": null,
+      "L3_attack_type": null,
+      "scenario_duration_s": 61.0
+    },
+    {
+      "scenario": "ntp_reflection_sim",
+      "flows": 33885,
+      "ml_scored_every_k_flows": 23,
+      "L1_first_alert_s": 1.177,
+      "L2_first_alert_s": 2.503,
+      "OOD_first_alert_s": 1.174,
+      "L3_first_alert_s": 2.0,
+      "L3_attack_type": "UDP flood",
+      "scenario_duration_s": 61.0
+    },
+    {
+      "scenario": "syn_flood",
+      "flows": 34843,
+      "ml_scored_every_k_flows": 24,
+      "L1_first_alert_s": 0.981,
+      "L2_first_alert_s": null,
+      "OOD_first_alert_s": 12.288,
+      "L3_first_alert_s": 2.0,
+      "L3_attack_type": "HTTP flood (L7)",
+      "scenario_duration_s": 60.8
+    },
+    {
+      "scenario": "udp_flood",
+      "flows": 86242,
+      "ml_scored_every_k_flows": 58,
+      "L1_first_alert_s": 1.29,
+      "L2_first_alert_s": 11.752,
+      "OOD_first_alert_s": 0.914,
+      "L3_first_alert_s": 1.0,
+      "L3_attack_type": "UDP flood",
+      "scenario_duration_s": 60.7
+    }
+  ]
+}
