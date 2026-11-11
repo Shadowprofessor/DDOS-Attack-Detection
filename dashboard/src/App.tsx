@@ -4,6 +4,7 @@ import { AnalystPage } from "./pages/Analyst";
 import { ApprovalsPage } from "./pages/Approvals";
 import { IncidentDetailPage } from "./pages/IncidentDetail";
 import { IncidentsPage } from "./pages/Incidents";
+import { LiveAttackPage } from "./pages/LiveAttack";
 import { LiveFeedPage } from "./pages/LiveFeed";
 import { OverviewPage } from "./pages/Overview";
 import { ReplayPage } from "./pages/Replay";
@@ -21,6 +22,7 @@ export const router = createBrowserRouter(
         { path: "incidents", Component: IncidentsPage },
         { path: "incidents/:id", Component: IncidentDetailPage },
         { path: "approvals", Component: ApprovalsPage },
+        { path: "live-attack", Component: LiveAttackPage },
         { path: "live", Component: LiveFeedPage },
         { path: "replay", Component: ReplayPage },
         { path: "analyst", Component: AnalystPage },

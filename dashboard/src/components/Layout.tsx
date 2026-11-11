@@ -33,6 +33,7 @@ export function Layout() {
           <NavLink to="/overview">Overview</NavLink>
           <NavLink to="/incidents">Incidents</NavLink>
           {isAdmin(auth) && <NavLink to="/approvals">Approvals</NavLink>}
+          <NavLink to="/live-attack">Live attack</NavLink>
           <NavLink to="/live">Live feed</NavLink>
           <NavLink to="/replay">Replay</NavLink>
           <NavLink to="/analyst">AI analyst</NavLink>

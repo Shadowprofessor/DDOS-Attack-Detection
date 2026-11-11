@@ -317,6 +317,11 @@ class RateThresholdDetector:
             target_ip=dst_ip,
         )
 
+    def evaluate_rates(self, pps: float, syn_rate: float, bps: float, conn_rate: float,
+                       src_ip: Optional[str] = None, dst_ip: Optional[str] = None) -> RateDetectionResult:
+        """Stateless check of already-aggregated rates (v5.2.0 live windows) against the thresholds."""
+        return self._evaluate_metrics(pps, syn_rate, bps, conn_rate, src_ip=src_ip, dst_ip=dst_ip)
+
     def reset(self) -> None:
         """Clear all active sliding windows."""
         with self._lock:

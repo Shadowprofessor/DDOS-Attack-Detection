@@ -31,7 +31,7 @@ function watchCsp(page: Page): string[] {
 
 const PAGES: [string, string][] = [
   ["/app/overview", "Overview"], ["/app/incidents", "Incidents"], ["/app/approvals", "Approvals"],
-  ["/app/live", "Live feed"], ["/app/replay", "Replay"], ["/app/analyst", "AI analyst"], ["/app/settings", "Settings & health"],
+  ["/app/live-attack", "Live attack"], ["/app/live", "Live feed"], ["/app/replay", "Replay"], ["/app/analyst", "AI analyst"], ["/app/settings", "Settings & health"],
 ];
 
 test("every page: axe has no serious/critical issues and the CSP holds", async ({ page }) => {

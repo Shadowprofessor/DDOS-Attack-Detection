@@ -51,6 +51,17 @@ Measured on **Intel64 Family 6 Model 183 Stepping 1, GenuineIntel** (28 logical 
 \* L2/OOD were scored on every k-th flow in the lab analysis (k shown in `results.json`), so their first-alert times are upper bounds.
 <!-- LATENCY:END -->
 
+## Real-time MTTD: live demo (v5.2.0)
+
+Attack start → first alert **on the website**, measured from a live Mininet run while the attack
+was running. Pcaps were tailed as tcpdump wrote them, L1 was evaluated on 1 s windows by the
+platform, and alerts were pushed over `/ws/live`. Reproduce with block H of `docs/RUNBOOK.md`, then
+`python scripts/live_mttd.py data/lab_runs/<run>`.
+
+<!-- LIVE:START -->
+_Not measured yet: waiting for the live lab run._
+<!-- LIVE:END -->
+
 ## Summary
 
 **The pipeline processes one flow in ~82 ms (p50; p99 ~97 ms) on this laptop.** Almost all of that
