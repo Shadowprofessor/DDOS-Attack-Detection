@@ -4,6 +4,64 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] — 2026-11-12
+
+### Added
+- **Live: Mininet attack → SOC website in real time.**
+  - **WSL side:** `lab/live_demo.sh` (sudo) runs the existing gated generator with a demo sequence
+    (benign → SYN → ICMP → flash crowd → UDP), the containment proof, `tcpdump -U` per scenario,
+    and a read-only OVS `dump-ports` poller.
+  - **Windows side:** `scripts/live_bridge.py` tails the growing pcaps and port counters on the
+    shared disk and feeds the platform through its API only. No WSL2↔Windows network path or
+    firewall change is needed.
+  - **Sensor (`src/live/`):** incremental pcap reader (no scapy, safe on half-written records),
+    per-victim 1 s windows (pps, bps, sources, entropy, protocol/flag mix, sizes, top talkers),
+    and flow snapshots every 5 s, so long floods are scored while still running.
+  - **Platform:** `/api/live/windows|flows|ovs|state|reset` + `/ws/live`. L1
+    (`RateThresholdDetector`) runs on every window; alert episodes open and clear; OVS port rates;
+    Prometheus gauges. Strict schemas and a separate write rate limit.
+  - **Bridge actions:** opens an incident through the IR API for each alert and runs the analyst
+    (in the background). Relays `/score/flow` verdicts labelled with what decided them (ML vs rate
+    corroboration).
+  - **Web:** a **Live attack** page with pps/bps charts, an alert banner with the L1 rule and its
+    numbers, top attackers, protocol/flag mix, OVS port counters, incidents and alert history.
+  - **Tools:** `scripts/live_mttd.py` (real-time MTTD from manifest × bridge log) and
+    `scripts/pcap_replay_live.py` (re-writes a recorded pcap as a growing file; sends nothing).
+  - Runbook block H.
+- **Measured live (2 lab runs, `docs/DETECTION_LATENCY.md`):**
+  - Alert on the website **3.8–5.8 s** after attack start: SYN 5.83 s, ICMP 3.89 s, UDP 3.77 s.
+    ~2 s of that is WSL2→Windows disk visibility.
+  - ICMP 3.9 s live vs 55.8 s offline.
+  - **No live alert on benign or flash crowd.**
+  - L3 via Nemotron Lightning named the SYN and ICMP floods but called the **UDP flood "Benign /
+    flash crowd"** (wrong). The rule analyst missed SYN. ML (L2) did not detect SYN or ICMP.
+- **SOC chat answers any question.** Live state, incident response (with the incident's playbook),
+  and securing the network, via Nemotron with conversation history and incident scope.
+  - Approve/block requests still get the safety notice, then the advice and the matching pending
+    proposal. There is still no execution path.
+  - Checked live against Lightning. Its commands are recommendations to review: it invented a
+    sysctl name once, and the prompt now forbids guessing.
+- Approvals is visible to analysts (read-only, with a note to sign in as admin to act).
+
+### Fixed
+- **Live alerts cleared mid-attack (live1).** Pcap writes reached Windows 1–3 s late, and windows
+  were closed by the wall clock meanwhile. Floods went out as empty windows, and the alert cleared
+  after 5–18 s of a 60 s flood. Windows now close by the packet clock while packets arrive, and by
+  the wall clock only after 2 s without packets. Late packets are counted. live2: one alert per
+  flood for its full duration, 0 late packets.
+- The bridge waited on LLM analysis inside its loop (live2 post lag up to 12.9 s). Analysis now
+  runs in a background thread with a 120 s timeout. Tested; not yet re-measured in a lab run.
+- The chat's offline fallback printed **hard-coded numbers** ("13 validation test pcaps, 6 clean
+  passes…"). It now uses only real platform state plus standard guidance, and says it is offline.
+- The chat refused any question containing "block"/"approve" instead of advising.
+
+### Known issues (measured, not fixed here)
+- `/score/flow` rate corroboration calls benign flows "attack" when a victim has ≥ 3 flows from
+  ≥ 3 sources: 16–20 s into the benign and flash-crowd phases in both runs, with the ML saying
+  Benign. It is labelled honestly in the UI; the fix is planned for v5.3.0.
+- `/score/flow` fills placeholder per-model entries ("Benign 0.56/0.66") when corroboration
+  overrides a missing model (v5.3.0 explainability).
+
 ## [5.1.0] — 2026-11-11
 
 ### Changed

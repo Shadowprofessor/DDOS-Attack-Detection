@@ -48,12 +48,15 @@ def main() -> None:
     if args.reset:
         http.post("/api/live/reset")
     b = Bridge(run, http, sensor=args.sensor, flows_per_s=args.flows_per_s, from_start=args.from_start,
-               victims=set(args.victim) if args.victim else None, open_incidents=not args.no_incidents)
+               victims=set(args.victim) if args.victim else None, open_incidents=not args.no_incidents,
+               analyze_http=RequestsHttp(args.api, key, timeout=120.0), analyze_async=True)
     print(f"watching {run} for *.pcap and ovs_ports.jsonl; log -> {b.log_path}")
     try:
         b.run(duration_s=args.duration)
     except KeyboardInterrupt:
         pass
+    finally:
+        b.close()
     print("stats:", dict(b.stats))
 
 

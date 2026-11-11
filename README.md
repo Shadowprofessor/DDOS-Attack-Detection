@@ -16,6 +16,8 @@ An advanced, defense-in-depth Distributed Denial of Service (DDoS) detection, at
 > same-dataset numbers, inconclusive cross-dataset, and a real lab run where the ML missed a SYN
 > flood but the rules caught most attacks. **[60-second demo](docs/DEMO.md)**.
 > **[Runbook](docs/RUNBOOK.md)**: copy-paste commands for every way to run it (app, scoring, replay, Mininet lab, analysis, tests).
+> **Live demo (v5.2.0)**: a Mininet attack shows up on the SOC website **3.8–5.8 s** after it starts (runbook block H, `docs/DETECTION_LATENCY.md`).
+>
 > **[Detection time](docs/DETECTION_LATENCY.md)**: measured ~81 ms per flow end-to-end, and lab attacks flagged by L1 within ~1–2 s of starting (window-bound).
 
 ```mermaid

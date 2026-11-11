@@ -126,3 +126,36 @@ def test_aggregate_from_windows_weights_by_packets():
     assert a["protocol_mix"] == {"tcp": 0.75, "udp": 0.25} and a["tcp_flag_ratios"] == {"syn": round(1000 / 1500, 4)}
     assert a["pps"] == 1000 and a["top_src_ips"][0] == {"key": "10.99.0.100", "share": 0.5}
     assert a["dst_ports"][0] == {"key": "443", "share": 1.0}
+
+
+class SlowHttp(ClientHttp):
+    """Like the real LLM path in live2: the analysis call blocks for a while."""
+
+    def __init__(self, c, gate):
+        super().__init__(c)
+        self.gate = gate
+
+    def post(self, path, body=None):
+        if path.endswith("/analyze"):
+            assert self.gate.wait(10)
+        return super().post(path, body)
+
+
+def test_slow_l3_analysis_runs_in_the_background_and_never_blocks_the_live_loop(c, tmp_path):
+    import threading
+
+    run = tmp_path / "live2"
+    run.mkdir()
+    clk = Clock(1000.0)
+    gate = threading.Event()
+    b = Bridge(run, ClientHttp(c), clock=clk, flows_per_s=0, analyze_http=SlowHttp(c, gate), analyze_async=True)
+    b.tick()
+    recs = syn_flood_records(1000.0, seconds=2)
+    (run / "syn_flood.pcap").write_bytes(global_header() + b"".join(recs))
+    clk.t = 1001.6
+    assert b.tick()["alerts"] == 1  # returned although the analysis is still blocked
+    kinds = lambda: [json.loads(x)["event"] for x in (run / "live_bridge.jsonl").read_text().splitlines()]
+    assert "incident_created" in kinds() and "incident_analyzed" not in kinds()
+    gate.set()
+    b.close()
+    assert "incident_analyzed" in kinds()

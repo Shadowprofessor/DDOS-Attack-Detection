@@ -15,6 +15,7 @@ The bridge never sees scenario labels: ground truth is only joined afterwards by
 from __future__ import annotations
 
 import json
+import threading
 import logging
 import math
 import time
@@ -114,8 +115,18 @@ class Bridge:
     def __init__(self, run_dir: Path, http: Http, sensor: str = "live-bridge", log_path: Optional[Path] = None,
                  flows_per_s: float = 1.5, from_start: bool = False, victims: Optional[set] = None,
                  clock: Callable[[], float] = time.time, export_s: float = 5.0, grace_s: float = 2.0,
-                 open_incidents: bool = True, analyze: bool = True):
+                 open_incidents: bool = True, analyze: bool = True, analyze_http: Optional[Http] = None,
+                 analyze_async: bool = False):
         self.run_dir, self.http, self.sensor, self.clock = Path(run_dir), http, sensor, clock
+        # The L3 analysis can take tens of seconds with an LLM (live2: > 5 s on Lightning). It gets
+        # its own client (longer timeout) and, live, its own thread, so the 1 s loop never waits.
+        self.analyze_http = analyze_http or http
+        self._pool = None
+        if analyze_async:
+            from concurrent.futures import ThreadPoolExecutor
+
+            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="l3-analyze")
+        self._log_lock = threading.Lock()
         self.victims, self.open_incidents, self.analyze = victims, open_incidents, analyze
         self.agg = WindowAggregator(clock=clock, grace_s=grace_s)
         self.flows = LiveFlows(export_s=export_s)
@@ -135,7 +146,7 @@ class Bridge:
 
     def log(self, event: str, **kw) -> None:
         rec = {"t": self.clock(), "event": event, **kw}
-        with self.log_path.open("a", encoding="utf-8") as fh:
+        with self._log_lock, self.log_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, default=str) + "\n")
 
     # ------------------------------------------------------------------ inputs
@@ -226,12 +237,24 @@ class Bridge:
             return None
         self.incidents[ep["id"]] = inc["id"]
         if self.analyze:
-            st, res = self.http.post(f"/api/incidents/{inc['id']}/analyze")
-            stored = (res.get("analysis") or {}) if isinstance(res, dict) else {}  # {"analysis": {...}, "source": ...}
-            analysis = stored.get("analysis") or {}
-            self.log("incident_analyzed", status=st, incident_id=inc["id"], attack_type=analysis.get("attack_type"),
-                     source=stored.get("source"), ack_at=self.clock())
+            if self._pool is not None:
+                self._pool.submit(self._analyze, inc["id"])
+            else:
+                self._analyze(inc["id"])
         return inc["id"]
+
+    def _analyze(self, incident_id: str) -> None:
+        t0 = self.clock()
+        st, res = self.analyze_http.post(f"/api/incidents/{incident_id}/analyze")
+        stored = (res.get("analysis") or {}) if isinstance(res, dict) else {}  # {"analysis": {...}, "source": ...}
+        analysis = stored.get("analysis") or {}
+        self.log("incident_analyzed", status=st, incident_id=incident_id, attack_type=analysis.get("attack_type"),
+                 source=stored.get("source"), sent_at=t0, ack_at=self.clock())
+
+    def close(self) -> None:
+        """Wait for background analyses to finish (call before reading the log)."""
+        if self._pool is not None:
+            self._pool.shutdown(wait=True)
 
     def score_flows(self, dt: float) -> int:
         for rec in self.flows.poll(self.agg.now() if self.agg._latest_pkt else None):
