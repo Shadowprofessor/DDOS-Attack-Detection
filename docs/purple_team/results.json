@@ -1,6 +1,9 @@
 {
-  "run": "run2",
-  "switch": "ovs",
+  "runs": [
+    "run2",
+    "run3"
+  ],
+  "model_fingerprint": "8227aabfc5cb",
   "containment": {
     "probe": "192.0.2.1",
     "drops_before": 0,
@@ -20,7 +23,7 @@
       "lab_ping_nat_gw": true,
       "probe_output": [
         "--- 192.0.2.1 ping statistics ---",
-        "3 packets transmitted, 0 received, 100% packet loss, time 2034ms"
+        "3 packets transmitted, 0 received, 100% packet loss, time 2044ms"
       ]
     }
   },
@@ -44,7 +47,7 @@
       "observed_incident": true,
       "expected_family": null,
       "l3_attack_type": "Benign / insufficient evidence",
-      "l3_family": "other",
+      "l3_family": null,
       "family_match": null,
       "expected_layers": [],
       "missing_layers": [],
@@ -58,7 +61,8 @@
       "l7_slow_connections": 0,
       "packets_sent": 1982,
       "stopped_by": "completed",
-      "outcome": "false_positive"
+      "outcome": "false_positive",
+      "run": "run2"
     },
     {
       "scenario": "dns_reflection_sim",
@@ -102,7 +106,8 @@
       "l7_slow_connections": null,
       "packets_sent": 47996,
       "stopped_by": "completed",
-      "outcome": "partial"
+      "outcome": "partial",
+      "run": "run2"
     },
     {
       "scenario": "flash_crowd",
@@ -123,7 +128,7 @@
       "observed_incident": true,
       "expected_family": null,
       "l3_attack_type": "Benign / insufficient evidence",
-      "l3_family": "other",
+      "l3_family": null,
       "family_match": null,
       "expected_layers": [],
       "missing_layers": [],
@@ -137,7 +142,8 @@
       "l7_slow_connections": 0,
       "packets_sent": 2779,
       "stopped_by": "completed",
-      "outcome": "false_positive"
+      "outcome": "false_positive",
+      "run": "run2"
     },
     {
       "scenario": "http_low_and_slow",
@@ -176,7 +182,8 @@
       "l7_slow_connections": 300,
       "packets_sent": 17850,
       "stopped_by": "completed",
-      "outcome": "detected"
+      "outcome": "detected",
+      "run": "run2"
     },
     {
       "scenario": "novel_ood_mix",
@@ -199,7 +206,7 @@
       "observed_incident": true,
       "expected_family": "zero_day_ood",
       "l3_attack_type": "Benign / insufficient evidence",
-      "l3_family": "other",
+      "l3_family": null,
       "family_match": false,
       "expected_layers": [
         "OOD",
@@ -220,7 +227,8 @@
       "l7_slow_connections": null,
       "packets_sent": 71099,
       "stopped_by": "completed",
-      "outcome": "partial"
+      "outcome": "partial",
+      "run": "run2"
     },
     {
       "scenario": "ntp_reflection_sim",
@@ -264,7 +272,8 @@
       "l7_slow_connections": null,
       "packets_sent": 47996,
       "stopped_by": "completed",
-      "outcome": "detected"
+      "outcome": "detected",
+      "run": "run2"
     },
     {
       "scenario": "syn_flood",
@@ -280,14 +289,13 @@
       },
       "observed_layers": [
         "L1",
-        "OOD",
-        "L3"
+        "OOD"
       ],
       "expected_incident": true,
       "observed_incident": true,
       "expected_family": "syn_flood",
-      "l3_attack_type": "Slowloris / low-and-slow HTTP (L7)",
-      "l3_family": "l7_low_and_slow",
+      "l3_attack_type": "Benign / insufficient evidence",
+      "l3_family": null,
       "family_match": false,
       "expected_layers": [
         "L1",
@@ -295,7 +303,8 @@
         "L3"
       ],
       "missing_layers": [
-        "L2"
+        "L2",
+        "L3"
       ],
       "mttd_s": 0.98,
       "mttd_with_idle_export_s": 60.98,
@@ -305,10 +314,11 @@
         "Benign": 1452
       },
       "aggregate_flows_to_victim": 34842,
-      "l7_slow_connections": 126,
+      "l7_slow_connections": null,
       "packets_sent": 89286,
       "stopped_by": "completed",
-      "outcome": "partial"
+      "outcome": "partial",
+      "run": "run2"
     },
     {
       "scenario": "udp_flood",
@@ -352,7 +362,173 @@
       "l7_slow_connections": null,
       "packets_sent": 89295,
       "stopped_by": "completed",
-      "outcome": "detected"
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "icmp_flood",
+      "flows": 20,
+      "flagged_flows": 20,
+      "ml_scored_flows": 20,
+      "ml_sample_every": 1,
+      "flagged_rate": 1.0,
+      "layer_hits": {
+        "L1": 20,
+        "L2": 0,
+        "OOD": 0
+      },
+      "observed_layers": [
+        "L1",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "ICMP flood",
+      "l3_family": "other",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 55.81,
+      "mttd_with_idle_export_s": 115.81,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "Benign": 20
+      },
+      "aggregate_flows_to_victim": 20,
+      "l7_slow_connections": null,
+      "packets_sent": 85268,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run3"
+    },
+    {
+      "scenario": "tcp_ack_flood",
+      "flows": 31278,
+      "flagged_flows": 31277,
+      "ml_scored_flows": 1490,
+      "ml_sample_every": 21,
+      "flagged_rate": 1.0,
+      "layer_hits": {
+        "L1": 31276,
+        "L2": 1486,
+        "OOD": 1066
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "Benign / insufficient evidence",
+      "l3_family": null,
+      "family_match": false,
+      "expected_layers": [
+        "L1"
+      ],
+      "missing_layers": [],
+      "mttd_s": 1.23,
+      "mttd_with_idle_export_s": 61.23,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 29788,
+        "UDP-Reflection-Amplification": 1486,
+        "Benign": 4
+      },
+      "aggregate_flows_to_victim": 31278,
+      "l7_slow_connections": null,
+      "packets_sent": 89313,
+      "stopped_by": "completed",
+      "outcome": "partial",
+      "run": "run3"
+    },
+    {
+      "scenario": "tcp_rst_flood",
+      "flows": 59263,
+      "flagged_flows": 59259,
+      "ml_scored_flows": 1482,
+      "ml_sample_every": 40,
+      "flagged_rate": 0.9999,
+      "layer_hits": {
+        "L1": 59259,
+        "L2": 13,
+        "OOD": 1
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "Benign / insufficient evidence",
+      "l3_family": null,
+      "family_match": false,
+      "expected_layers": [
+        "L1"
+      ],
+      "missing_layers": [],
+      "mttd_s": 1.47,
+      "mttd_with_idle_export_s": 61.47,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 57781,
+        "Benign": 1469,
+        "UDP-Reflection-Amplification": 13
+      },
+      "aggregate_flows_to_victim": 59263,
+      "l7_slow_connections": null,
+      "packets_sent": 89452,
+      "stopped_by": "completed",
+      "outcome": "partial",
+      "run": "run3"
+    },
+    {
+      "scenario": "land_attack",
+      "flows": 1,
+      "flagged_flows": 1,
+      "ml_scored_flows": 1,
+      "ml_sample_every": 1,
+      "flagged_rate": 1.0,
+      "layer_hits": {
+        "L1": 1,
+        "L2": 1,
+        "OOD": 1
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "TCP SYN flood",
+      "l3_family": "syn_flood",
+      "family_match": false,
+      "expected_layers": [
+        "L1"
+      ],
+      "missing_layers": [],
+      "mttd_s": 60.78,
+      "mttd_with_idle_export_s": 120.78,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "Syn": 1
+      },
+      "aggregate_flows_to_victim": 1,
+      "l7_slow_connections": null,
+      "packets_sent": 17999,
+      "stopped_by": "completed",
+      "outcome": "partial",
+      "run": "run3"
     }
   ]
 }

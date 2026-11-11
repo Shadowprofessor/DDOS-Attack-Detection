@@ -4,6 +4,59 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] — 2026-11-11
+
+### Changed
+- **L3 analyst default model: Nemotron 3.5 Lightning** (`nvidia/nemotron-3.5-lightning-30b-a3b`).
+  The id and forced tool calling were verified on the live NIM model list.
+  - Override with `NEMOTRON_MODEL`, or with `DDOS_LLM_MODELS` for a chain.
+  - **Ultra** (`nvidia/nemotron-3-ultra-550b-a55b`) is now an optional escalation for incidents the
+    rules rate severity 5: `DDOS_LLM_ESCALATE_ULTRA=true`, **off by default**.
+  - The rule-based fallback is unchanged. Tests and CI still use rules or mocks; the live test
+    skips without `NVIDIA_API_KEY`.
+- **Live NIM result, run once, reported as measured.**
+  - The first Lightning call returned no content: reasoning used 911 of 1,024 tokens
+    (`finish_reason=length`).
+  - The legacy agent now sends `enable_thinking: false` (opt back in with
+    `NEMOTRON_ENABLE_THINKING=true`) and handles null content. The live test then passed in 7.9 s.
+  - The probe's forced tool call returned severity 8, outside the 1–5 range. Validation, retry and
+    the rule fallback cover this.
+
+### Added
+- **Four lab scenarios** on the existing gated generator, with the same caps, kill switch and
+  containment (no new safety model):
+  - `icmp_flood` (T1498.001), `tcp_ack_flood` (T1498.001), `tcp_rst_flood` (T1498.001),
+    `land_attack` (T1499.001).
+  - Measured in lab `run3`: 282,032 packets; containment check passed again.
+  - **ICMP: detected** (L1 + L3). **ACK: partial** (L1; L2 flagged but as UDP reflection; L3 not
+    detected). **RST: partial** (L1; L3 not detected). **LAND: partial** (one flow; L3 called it a
+    SYN flood).
+- `lab_analysis` and `detection_latency` accept several run directories (a later run wins per
+  scenario). The per-flow score cache is keyed by a model fingerprint, so changing a model can't
+  reuse stale scores.
+- Coverage matrix, purple-team findings 8–11, `REPORT.md` §5.3 and README "what's measured" now
+  cover 12 scenarios.
+
+### Fixed
+- **L3 SYN-flood mislabel (lab harness).** The lab aggregate counted every flow to 80/443 as an
+  HTTP request, including zero-payload handshakes. So the SYN flood read as "HTTP flood" and then
+  "Slowloris", and ACK/RST floods as "Slowloris". Only flows with client payload count as HTTP now;
+  HTTP scenarios are unchanged.
+  - **Measured after the fix: L3 does not detect the SYN, ACK or RST floods.** The SYN rule needs a
+    SYN ratio ≥ 0.7, and an answered SYN flood is 2/3. Not retuned against the evaluation run.
+- Coverage no longer prints an L3 family when L3 did not alert.
+- Lab containment failed on a Windows checkout (CRLF in `containment.nft`). Added `.gitattributes`
+  (LF for lab files) and the orchestrator strips CRs.
+
+### Investigated, not changed: L2 missed the lab SYN flood (0/1,452)
+- **No feature is missing.** The lab SYN flows are 17 µs answered handshakes. CIC-DDoS2019 `Syn`
+  flows are ~40 s and mostly unanswered.
+- In the training set, flows of the lab shape are **212 `Syn` vs 9,762 `Benign`**, so the
+  ensemble's `Benign` is what its training data supports.
+- **Not retrained.** An honest fix needs labelled lab-shaped traffic independent of the evaluation
+  run. Retraining on CIC-DDoS2019 cannot fix it, and training on `run2` would leak. Documented in
+  `REPORT.md` §7 and `docs/purple_team/README.md` finding 1.
+
 ## [5.0.1] — 2026-11-11
 
 Docs and a benchmark script only. **No behaviour change.**

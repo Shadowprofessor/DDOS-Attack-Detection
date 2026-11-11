@@ -153,3 +153,34 @@ def test_emitters_are_only_called_through_the_gated_runner():
     run = next(f for f in cls.body if isinstance(f, ast.FunctionDef) and f.name == "run")
     first = run.body[0] if not isinstance(run.body[0], ast.Expr) else run.body[1]
     assert "plan" in ast.unparse(first), "run() must call the safety planner before anything else"
+
+
+# ----------------------------------------------------------------------------- v5.1.0 scenarios
+def _sent(kill, sid, **kw):
+    sc = _short(load_scenarios()[sid], duration_s=1, rate_pps=50, **kw)
+    r, sent, _ = _runner(load_scope(), kill)
+    rep = r.run(sc)
+    return rep, sent["raw"]
+
+
+def test_icmp_flood_is_echo_requests_to_the_victim(kill):
+    from scapy.all import ICMP, IP  # noqa: E402
+    rep, pkts = _sent(kill, "icmp_flood")
+    assert rep.packets == len(pkts) > 0
+    assert {p[IP].dst for p in pkts} == {"10.99.0.10"} and all(p[ICMP].type == 8 for p in pkts)
+
+
+def test_ack_and_rst_floods_carry_only_their_flag(kill):
+    from scapy.all import IP, TCP  # noqa: E402
+    for sid, flag in (("tcp_ack_flood", "A"), ("tcp_rst_flood", "R")):
+        _, pkts = _sent(kill, sid)
+        assert pkts and all(p[TCP].flags == flag for p in pkts), sid
+        assert all(100 <= int(p[IP].src.split(".")[-1]) <= 149 for p in pkts)  # lab attacker pool only
+
+
+def test_land_packets_have_source_equal_destination_and_stay_in_the_lab(kill):
+    from scapy.all import IP, TCP  # noqa: E402
+    _, pkts = _sent(kill, "land_attack")
+    assert pkts
+    for p in pkts:
+        assert p[IP].src == p[IP].dst == "10.99.0.10" and p[TCP].sport == p[TCP].dport == 80

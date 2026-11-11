@@ -66,6 +66,17 @@ def test_aggregate_shape():
     assert a["pps"] == 10.0 and len(a["top_src_ips"]) == 10
 
 
+def test_zero_payload_handshakes_to_443_are_not_http():
+    """v5.1.0: a SYN flood to :443 (SYN, SYN-ACK, RST; no payload) was counted as HTTP requests,
+    so L3 named it 'HTTP flood' / 'Slowloris'. Only flows that carried client bytes count as HTTP."""
+    hs = [{**f, "packets": 3, "syn": 2.0, "fwd_bytes": 0.0} for f in syn_flows(1000)]
+    long_idle = [{**f, "start": T0, "end": T0 + 30, "fwd_bytes": 0.0} for f in syn_flows(30)]
+    a = build_aggregate("x", hs + long_idle, T0, 1)
+    assert a["l7"] is None  # neither "HTTP rps" nor "slow connections" from bare handshakes
+    web = build_aggregate("y", web_flows(), T0, 50)
+    assert web["l7"]["http_rps"] == 1.0  # flows with payload still count
+
+
 def test_matrix_and_navigator_layer():
     scs = load_scenarios()
     rs = [analyse_run(run("syn_flood"), scs["syn_flood"].expected.model_dump(), syn_flows(), flags_attacks(0)),

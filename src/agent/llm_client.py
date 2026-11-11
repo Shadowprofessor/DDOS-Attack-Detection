@@ -2,7 +2,7 @@
 """
 Config-driven client for NVIDIA NIM (OpenAI-compatible) used by the Layer-3 analyst.
 
-* Model chain from config — default ``nvidia/nemotron-3-ultra-550b-a55b`` then
+* Model chain from config — default ``nvidia/nemotron-3.5-lightning-30b-a3b`` (v5.1.0; was Ultra) then
   ``nvidia/nemotron-3-super-120b-a12b``; on HTTP 4xx/5xx, timeout or network error the next
   model is tried, and the caller falls back to the deterministic rule-based summary.
 * Strict structured output via forced tool-calling.
@@ -24,7 +24,12 @@ from src.obs import metrics as obs_metrics
 logger = logging.getLogger("llm_client")
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_MODELS = "nvidia/nemotron-3-ultra-550b-a55b,nvidia/nemotron-3-super-120b-a12b"
+# v5.1.0: primary model is Nemotron 3.5 Lightning (id + forced tool-calling verified on the live NIM
+# model list, 3.6 s per call). Ultra (27-46 s, timed out / 503 at the v5.0.0 release) is now an
+# optional severity-5 escalation only.
+LIGHTNING_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+DEFAULT_MODELS = LIGHTNING_MODEL
 
 
 def _truthy(v: Any) -> bool:
@@ -42,6 +47,8 @@ class LLMConfig:
     enable_thinking: bool = False
     price_in_per_1m: float = 0.0   # USD per 1M prompt tokens (0 = free tier)
     price_out_per_1m: float = 0.0  # USD per 1M completion tokens
+    escalate_severity5: bool = False   # try the escalation model first for severity-5 incidents
+    escalation_model: str = ULTRA_MODEL
 
     @classmethod
     def from_env(cls, section: Optional[Dict[str, Any]] = None) -> "LLMConfig":
@@ -54,7 +61,8 @@ class LLMConfig:
             v = s.get(key)
             return default if v in (None, "") else v
 
-        models = pick("DDOS_LLM_MODELS", "models", DEFAULT_MODELS)
+        # DDOS_LLM_MODELS / analyst.models = full chain; else NEMOTRON_MODEL = the primary model alone.
+        models = pick("DDOS_LLM_MODELS", "models", os.environ.get("NEMOTRON_MODEL") or DEFAULT_MODELS)
         if isinstance(models, str):
             models = [m.strip() for m in models.split(",") if m.strip()]
         return cls(
@@ -67,12 +75,15 @@ class LLMConfig:
             enable_thinking=_truthy(pick("DDOS_LLM_ENABLE_THINKING", "enable_thinking", False)),
             price_in_per_1m=float(pick("DDOS_LLM_PRICE_IN_PER_1M", "price_in_per_1m", 0.0)),
             price_out_per_1m=float(pick("DDOS_LLM_PRICE_OUT_PER_1M", "price_out_per_1m", 0.0)),
+            escalate_severity5=_truthy(pick("DDOS_LLM_ESCALATE_ULTRA", "escalate_severity5_to_ultra", False)),
+            escalation_model=str(pick("DDOS_LLM_ESCALATION_MODEL", "escalation_model", ULTRA_MODEL)),
         )
 
     def public_view(self) -> Dict[str, Any]:
         """Config safe to show in the UI / logs (no key)."""
         return {"base_url": self.base_url, "models": self.models, "timeout_s": self.timeout_s,
-                "enable_thinking": self.enable_thinking, "api_key_present": bool(self.api_key)}
+                "enable_thinking": self.enable_thinking, "api_key_present": bool(self.api_key),
+                "escalate_severity5": self.escalate_severity5, "escalation_model": self.escalation_model}
 
 
 class LLMUnavailable(Exception):

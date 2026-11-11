@@ -126,7 +126,7 @@ One request, nothing to stop.
 
 ## E. Purple-team lab in Mininet (WSL2 + sudo; lab-only traffic)
 
-Builds an isolated Mininet LAN (`10.99.0.0/24`, no NAT, no route out) and runs all 8 scenarios
+Builds an isolated Mininet LAN (`10.99.0.0/24`, no NAT, no route out) and runs all 12 scenarios
 through the gated generator. It records the victim's traffic to pcaps. `--containment` first
 proves (in a separate throwaway network) that lab traffic cannot leave. Every packet is checked
 against `lab/lab_scope.yaml` (private lab IPs only, ≤ 2,000 pkt/s, ≤ 120 s, kill switch).
@@ -137,7 +137,8 @@ cd "/mnt/c/Users/Sachit Sharma/Documents/Sachit Main/DDoS-Detection-clean"
 sudo mn -c                                    # clean up any earlier Mininet state
 sudo python3 -m lab.traffic.orchestrate --out data/lab_runs/run3 --containment
 ```
-**Takes ~11 minutes** (measured 10.6 min for `run2`). Each scenario sends real-time traffic for
+**Takes ~11 minutes** for the original 8 (measured 10.6 min for `run2`); add ~5 min for the 4
+v5.1.0 scenarios. To run only some, pass `--scenarios icmp_flood,tcp_ack_flood,tcp_rst_flood,land_attack`. Each scenario sends real-time traffic for
 60 s (low-and-slow: 120 s + ~30 s connection teardown), with short gaps between scenarios.
 
 Expected output:
@@ -168,12 +169,13 @@ Runs every captured flow through the real stack (L1 rules, L2 ensemble, OOD, rul
 It reports per-scenario outcome, MTTD, false positives, an ATT&CK Navigator layer, and per-stage
 detection latency.
 ```bash
-python -m src.eval.lab_analysis data/lab_runs/run2          # coverage matrix
-python scripts/detection_latency.py data/lab_runs/run2      # processing latency + per-layer MTTD
+python -m src.eval.lab_analysis data/lab_runs/run2 data/lab_runs/run3       # coverage matrix (later run wins per scenario)
+python scripts/detection_latency.py data/lab_runs/run2 data/lab_runs/run3   # processing latency + per-layer MTTD
 ```
 Time: first analysis ~25 min (the 183 MB Random Forest is ~10 ms/flow; ML is scored on ≤ 1,500
-flows per scenario). Re-runs reuse `data/lab_runs/<run>/scores/` and take ~7 min.
-`detection_latency.py` takes ~10 min.
+flows per scenario). Re-runs reuse `data/lab_runs/<run>/scores/<model-fingerprint>/` and take ~10 min for both runs.
+Changing a model file changes the fingerprint, so stale scores are never reused.
+`detection_latency.py` takes ~14 min for both runs.
 
 Expected: one line per scenario (e.g. `syn_flood partial ['L1', 'OOD', 'L3'] 0.98 flows=34843 …`),
 then `wrote …\docs\purple_team`. Outputs:
@@ -199,7 +201,7 @@ Git Bash / WSL:
 ```bash
 env -u NVIDIA_API_KEY python -m pytest tests/ -q
 ```
-Expected: `590 passed, 5 skipped` at v5.0.0, or more as tests are added (~3–5 min). Web-app tests:
+Expected: `607 passed, 5 skipped` at v5.1.0, or more as tests are added (~3–5 min). Web-app tests:
 ```bash
 cd dashboard && npm run lint && npm run typecheck && npm test && npm run build && npx playwright test
 ```

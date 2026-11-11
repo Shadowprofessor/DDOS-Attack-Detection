@@ -1,0 +1,7 @@
+id: land_attack
+name: LAND attack (source == destination)
+attack: true
+mitre: [T1499.001]
+description: TCP SYN packets whose spoofed source IP and port equal the victim's own address and port, which can make a vulnerable stack reply to itself.
+profile: {protocol: land, rate_pps: 300, duration_s: 60, sources: 1, source_role: attacker, dst_port: 80, packet_size: 60}
+expected: {incident: true, family: other, layers: [L1], max_mttd_s: 30}

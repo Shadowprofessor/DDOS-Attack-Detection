@@ -3,3 +3,5 @@
 6e34571a54f902ddd3001d9f487e19b6fa8527e9:tests/test_soc_session.py:generic-api-key:65
 # throwaway demo key in docs/DEMO.md (replaced by $DDOS_API_KEYS in a later commit)
 ccec28998b564c2231f36a179b55c0bec12b56c1:docs/DEMO.md:curl-auth-header:19
+# fake test-only key in the v5.1.0 analyst test (replaced with a placeholder in a later commit)
+819c00db9e06ecfa4cc24b1e93044a6ff1cee503:tests/test_analyst_model_config.py:generic-api-key:73

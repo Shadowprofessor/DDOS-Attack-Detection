@@ -271,6 +271,15 @@ class ThreatAnalyst:
                               prompt_version=self.prompt_version, degraded=True, degraded_reason=reason,
                               suspicious_telemetry=suspicious, latency_ms=(time.perf_counter() - t0) * 1e3)
 
+    def model_chain(self, agg: IncidentAggregate) -> List[str]:
+        """Configured chain; with escalation on, severity-5 incidents (by the deterministic rule
+        pre-check) try the escalation model (Ultra) first. The rule fallback still follows."""
+        cfg = self.client.config
+        chain = list(cfg.models)
+        if cfg.escalate_severity5 and rule_based_analysis(agg).severity >= 5:
+            chain = [cfg.escalation_model] + [m for m in chain if m != cfg.escalation_model]
+        return chain
+
     def analyze(self, agg: IncidentAggregate) -> AnalysisResult:
         t0 = time.perf_counter()
         key = self._cache_key(agg)
@@ -292,7 +301,7 @@ class ThreatAnalyst:
         else:
             messages = self._messages(block, agg.incident_id)
             reasons: List[str] = []
-            for model in self.client.config.models:
+            for model in self.model_chain(agg):
                 try:
                     args, _ = self.client.call_tool(model, messages, self.tool)
                     try:

@@ -31,6 +31,10 @@ PROTO_MIX = {
     "http": ({"tcp": 0.99, "udp": 0.01}, {"syn": 0.1, "ack": 0.8}),
     "http_slow": ({"tcp": 0.99, "udp": 0.01}, {"syn": 0.05, "ack": 0.9}),
     "mixed": ({"tcp": 0.5, "udp": 0.4, "icmp": 0.1}, {"syn": 0.3, "ack": 0.5}),
+    "icmp": ({"icmp": 0.99, "tcp": 0.01}, {}),
+    "tcp_ack": ({"tcp": 0.99, "udp": 0.01}, {"ack": 0.97, "syn": 0.0}),
+    "tcp_rst": ({"tcp": 0.99, "udp": 0.01}, {"rst": 0.97, "syn": 0.0}),
+    "land": ({"tcp": 0.99, "udp": 0.01}, {"syn": 0.95}),
 }
 
 

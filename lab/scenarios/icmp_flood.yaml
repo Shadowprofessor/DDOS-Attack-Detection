@@ -1,0 +1,7 @@
+id: icmp_flood
+name: ICMP echo flood
+attack: true
+mitre: [T1498.001]
+description: High-rate ICMP echo requests from lab attacker hosts toward the victim (classic ping flood).
+profile: {protocol: icmp, rate_pps: 1500, duration_s: 60, sources: 20, source_role: attacker, packet_size: 84}
+expected: {incident: true, family: other, layers: [L1, L3], max_mttd_s: 30}

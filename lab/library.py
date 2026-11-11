@@ -19,7 +19,8 @@ class ScenarioError(ValueError):
 
 class Profile(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    protocol: Literal["tcp_syn", "udp", "udp_reflection", "dns_reflection", "http", "http_slow", "mixed"]
+    protocol: Literal["tcp_syn", "udp", "udp_reflection", "dns_reflection", "http", "http_slow", "mixed",
+                      "icmp", "tcp_ack", "tcp_rst", "land"]
     rate_pps: int = Field(..., gt=0)
     duration_s: int = Field(..., gt=0)
     sources: int = Field(..., ge=1, le=254)
