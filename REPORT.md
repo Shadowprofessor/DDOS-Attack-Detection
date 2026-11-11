@@ -1,4 +1,4 @@
-# DDoS Detection & Mitigation Platform: Technical Report (v5.0.0)
+# DDoS Detection & Mitigation Platform: Technical Report (v5.1.0)
 
 Author: Sachit Sharma. Licence: MIT.
 
@@ -22,8 +22,11 @@ code-enforced containment.
   - Cross-dataset CICIoT2023: F1 swings 1.00 → 0.05 depending only on how the 57 unmapped
     features are filled. Inconclusive (§5.2).
   - In a real Mininet lab run, the ensemble flagged **0 of 1,452** sampled SYN-flood flows (§5.3).
-- **The platform still detected 3 of 6 lab attacks fully and 3 partially**, through the L1 rules
-  and the rule-based L3. It also raised **2 false positives**: a flash crowd tripped the L1 rate
+    v5.1.0 traced this to training data, not a missing feature: flows shaped like the lab's are
+    46:1 `Benign` in the training set. It is a documented limitation; nothing was retrained.
+- **Of 10 lab attacks, the platform detected 4 fully and 6 partially**, mainly through the L1 rules
+  (L1 fired on all 10). The rule-based L3 alerted on 6 of them, with the expected family on 4.
+  It did **not detect** the SYN, ACK and RST floods or the novel mix. It also raised **2 false positives**: a flash crowd tripped the L1 rate
   thresholds.
 - **No model or LLM output can block traffic.** Every mitigation is a PENDING proposal until an
   admin approves it. This is enforced by an AST test. Lab egress containment was measured: 3/3
@@ -57,7 +60,10 @@ flowchart LR
 ## 3. Key design decisions
 
 1. **The LLM is never in the packet path.** It sees one aggregated, sanitised incident at a
-   time. Nemotron Ultra takes 27–46 s per analysis, so it could not be in the fast path anyway.
+   time. Since v5.1.0 the default model is Nemotron 3.5 Lightning
+   (`nvidia/nemotron-3.5-lightning-30b-a3b`, set by `NEMOTRON_MODEL`). In the one live check it
+   took 7.9 s per analysis. Ultra took 27–46 s and is now an opt-in escalation for severity-5
+   incidents (`DDOS_LLM_ESCALATE_ULTRA`, off by default). Neither could be in the fast path.
    Timeouts fall back to a deterministic rule analyst, which is also used in tests and CI.
 2. **Recommend, never execute.** Mitigation needs `PendingActionManager.approve()` with an admin
    credential. `tests/test_mitigation_bypass.py` scans the code for any other path to
@@ -116,17 +122,36 @@ A two-line protocol rule also catches every attack (benign FPR 36.9%). **Inconcl
 measures sensitivity to a feature-schema mismatch, not generalisation. Details:
 `docs/eval/cross_dataset.md`.
 
-### 5.3 Purple-team lab (Mininet on WSL2, v4.6.1)
-8 scenarios, ~370k packets, captured at the victim and run through the real L1 / L2 / OOD / rule
-L3 stack (`docs/purple_team/README.md`):
-- **Containment proven:** with a NAT path deliberately open, 3/3 probes were dropped at the lab
-  boundary; 0 appeared on the uplink.
-- **Detected:** UDP flood, NTP reflection (simulated reflector), HTTP low-and-slow.
-- **Partial:** SYN flood (L3 called it low-and-slow), DNS reflection (generic UDP family),
-  novel/OOD mix (OOD flagged 48%).
+### 5.3 Purple-team lab (Mininet on WSL2, v4.6.1 + v5.1.0)
+12 scenarios in two runs, ~650k packets: `run2` (8 scenarios, v4.6.1) and `run3` (ICMP, ACK, RST and
+LAND floods, v5.1.0; 282,032 packets). Captured at the victim and run through the real L1 / L2 /
+OOD / rule L3 stack (`docs/purple_team/README.md`):
+- **Containment proven in both runs:** with a NAT path deliberately open, 3/3 probes were dropped
+  at the lab boundary; 0 appeared on the uplink.
+- **Detected:** UDP flood, NTP reflection (simulated reflector), HTTP low-and-slow, ICMP flood.
+- **Partial:**
+  - SYN flood (L1 + OOD only; L3 and L2 did not detect it);
+  - DNS reflection (generic UDP family);
+  - novel/OOD mix (OOD flagged 48%);
+  - ACK flood (L2 flagged 1,486/1,490 but as UDP reflection; L3 did not detect it);
+  - RST flood (L2 13/1,482; L3 did not detect it);
+  - LAND (one flow; L3 called it a SYN flood).
 - **False positives:** flash crowd (L1 on 41% of flows), benign baseline (3%).
-- **L2 flagged 0/1,452 sampled SYN-flood flows**, and 1–16% on the other floods.
-- MTTD ≈ 1 s after flow export (≈ 61 s with a 60 s idle-timeout exporter); low-and-slow 117 s.
+- **L2 flagged 0/1,452 sampled SYN-flood flows** (all `Benign`), 0/20 ICMP flows, and 1–16% on
+  the UDP floods.
+  - Cause, investigated in v5.1.0: the lab SYN flows are 17 µs answered handshakes (SYN, SYN-ACK,
+    RST). CIC-DDoS2019 `Syn` flows are ~40 s and mostly unanswered.
+  - In the training set, flows of the lab shape are 212 `Syn` vs 9,762 `Benign`.
+  - No feature is missing; the training distribution does not cover this traffic.
+  - Not retrained: an honest fix needs labelled lab-shaped traffic independent of the evaluation
+    run (§7).
+- **L3 SYN-flood result corrected in v5.1.0.** It was "HTTP flood / low-and-slow", because the lab
+  aggregate counted zero-payload handshakes to :443 as HTTP requests. After the fix it is **not
+  detected**: the SYN-flag ratio of an answered flood is 2/3, under the rule's 0.7. Not retuned on
+  this run.
+- MTTD ≈ 1–1.5 s for the floods after flow export (≈ 61 s with a 60 s idle-timeout exporter);
+  low-and-slow 117 s. ICMP 55.8 s and LAND 60.8 s are bound by their few long flows ending with the
+  scenario, not by detector speed.
 - The run found a product bug (UDP floods routed to the zero-day playbook), now fixed.
 
 ### 5.4 Threat hunts (v4.7.0)
@@ -147,8 +172,12 @@ crowd. They have not been validated on positive traffic yet.
 ## 7. Limitations
 1. ML generalisation is unproven and, in the lab, poor. Detection outside CIC-DDoS2019 currently
    rests on rules.
+   The lab SYN miss is a training-distribution gap: answered sub-millisecond handshakes are
+   overwhelmingly `Benign` in CIC-DDoS2019, so the ensemble is not expected to flag them.
 2. L1 fixed thresholds false-positive on legitimate surges.
-3. The low-and-slow rule overlaps with half-open SYN floods, and the reflection rule reads
+3. The production low-and-slow rule still counts zero-byte flows ≥ 10 s as slow, which overlaps
+   with SYN floods. The L3 SYN rule (SYN ratio ≥ 0.7) cannot fire on an answered SYN flood (ratio
+   2/3). The rule analyst has no ACK, RST or LAND rule. The reflection rule reads
    destination rather than source ports.
 4. No same-extractor cross-dataset test (CICIoT2023/CIC-IDS2017 pcaps through our extractor).
 5. Shared API keys, no per-user identity or MFA. `/metrics` is unauthenticated. Model artifacts
@@ -158,10 +187,19 @@ crowd. They have not been validated on positive traffic yet.
 8. The LLM provider is not reliable enough to depend on. At release time the live NVIDIA NIM
    check timed out (60 s) after an earlier HTTP 503. The platform falls back to the deterministic
    rule analyst, which is why no safety property depends on the LLM.
+   v5.1.0 live check with Lightning, run once:
+   - The first call returned no content: the model spent 911 of 1,024 tokens on reasoning and was
+     cut off (`finish_reason=length`).
+   - With reasoning disabled (`enable_thinking: false`) the live test passed in 7.9 s.
+   - A forced tool call in the probe returned severity 8, outside the 1–5 schema range. Schema
+     validation, retry and the rule fallback handle this, but it shows model output cannot be
+     trusted as-is.
 
 ## 8. Future work
 Retrain or adapt the ML on lab and CICIoT2023 pcaps through our own extractor; adaptive
-per-destination L1 baselines; handshake-aware low-and-slow and source-port reflection rules; lab
+per-destination L1 baselines; handshake-aware low-and-slow and source-port reflection rules;
+an answered-SYN-flood rule and ACK/RST/LAND rules for L3, validated on a fresh lab run; labelled
+lab-shaped SYN traffic from a run separate from the evaluation, for ML retraining; lab
 scenarios for ≥50 reflectors and slow-read; artifact hash pinning; per-user OIDC sign-in; an
 externally anchored timeline head hash.
 

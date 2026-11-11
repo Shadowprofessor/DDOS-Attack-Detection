@@ -15,7 +15,7 @@
     {
       "techniqueID": "T1498.001",
       "score": 100,
-      "comment": "syn_flood: partial (L1, OOD, L3); udp_flood: detected (L1, L2, OOD, L3)"
+      "comment": "syn_flood: partial (L1, OOD); udp_flood: detected (L1, L2, OOD, L3); icmp_flood: detected (L1, L3); tcp_ack_flood: partial (L1, L2, OOD); tcp_rst_flood: partial (L1, L2, OOD)"
     },
     {
       "techniqueID": "T1498.002",
@@ -25,7 +25,7 @@
     {
       "techniqueID": "T1499.001",
       "score": 50,
-      "comment": "syn_flood: partial (L1, OOD, L3)"
+      "comment": "syn_flood: partial (L1, OOD); land_attack: partial (L1, L2, OOD, L3)"
     },
     {
       "techniqueID": "T1499.002",

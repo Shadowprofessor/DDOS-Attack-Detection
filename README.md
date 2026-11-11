@@ -141,7 +141,7 @@ production/staging.
 
 ---
 
-## 🧠 AI Threat Analyst (Layer 3 — NVIDIA Nemotron 3 Ultra)
+## 🧠 AI Threat Analyst (Layer 3 — NVIDIA Nemotron 3.5 Lightning; Ultra optional)
 
 The analyst triages **one aggregated incident at a time** (never packets) and returns a strict,
 validated analysis: attack type, MITRE ATT&CK IDs, severity 1-5, confidence, evidence,
@@ -162,13 +162,18 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 | Validate → retry once → fallback, cache, **output policy** | `src/agent/threat_analyst.py` |
 | API (`/api/analyst/analyze`, `/api/analyst/config`) | `src/api/analyst_router.py` |
 
-- **Models** (verified against the live NIM model list; configurable via `analyst:` in
-  `config/environments/*.yaml` or `DDOS_LLM_MODELS`): `nvidia/nemotron-3-ultra-550b-a55b` →
-  `nvidia/nemotron-3-super-120b-a12b` → deterministic rule-based summary.
-  *Note:* `nemotron-3-super-120b-a12b` is listed in the catalog but returns HTTP 404 for the
-  current account, so in practice the chain is Ultra → rules until it is provisioned.
-- **Latency:** a full structured analysis takes ~30-45 s on Ultra (timeout 90 s). That is why it
-  runs once per incident window (cached), off the fast path; the rule-based result is instant.
+- **Models** (v5.1.0; ids verified against the live NIM model list):
+  - Default: `nvidia/nemotron-3.5-lightning-30b-a3b`, with tool calling confirmed live. Override it
+    with `NEMOTRON_MODEL` (one model) or `DDOS_LLM_MODELS` (a comma-separated chain).
+  - Optional escalation: with `DDOS_LLM_ESCALATE_ULTRA=true` (default **off**), incidents the rules
+    rate severity 5 try `nvidia/nemotron-3-ultra-550b-a55b` first (`DDOS_LLM_ESCALATION_MODEL`).
+  - Last step is always the deterministic rule-based analysis, which is also what tests and CI use.
+- **Latency:**
+  - Lightning: 7.9 s for the live structured analysis, with reasoning disabled. With reasoning on,
+    the first attempt ran out of tokens and returned nothing.
+  - Ultra: ~30–45 s (timeout 90 s).
+  - Either way it runs once per incident window (cached), off the fast path; the rule-based
+    result is instant.
 - **Prompt-injection defence (layered):** (1) sanitise attacker strings, escape tags, wrap in
   `<telemetry>`; (2) system prompt declares telemetry untrusted; (3) **code-enforced output policy** —
   `incident_id` is pinned, every action requires human approval, actions targeting IPs not in the
@@ -185,21 +190,29 @@ curl -s -X POST localhost:8000/api/analyst/analyze -H "X-API-Key: $KEY" \
 
 ---
 
-## 🟣 Purple-Team Lab (v4.6.0 safety layer · v4.6.1 measured runs)
+## 🟣 Purple-Team Lab (v4.6.0 safety layer · v4.6.1 + v5.1.0 measured runs)
 
 Attack simulation is **lab-only** and the safety rules are enforced in code (`lab/safety.py`). Only
 private, allowlisted lab addresses can be targets; public IPs are refused. Rate, duration and
 concurrency are capped. A kill switch is checked every tick. The runner refuses to start unless it
-detects WSL2 + Mininet. v4.6.0 ships the safety layer, 8 ATT&CK-mapped scenarios and a mock runner,
+detects WSL2 + Mininet. The safety layer, 12 ATT&CK-mapped scenarios (8 in v4.6.0, 4 in v5.1.0) and a mock runner are
 all tested in CI.
 
-**v4.6.1 first lab run (Mininet on WSL2, measured):**
-- **Containment proven.** Lab egress was dropped by nftables, with nothing on the uplink.
-- 3 of 6 attack scenarios fully detected, 3 partially.
+**What's measured (Mininet on WSL2; `run2` v4.6.1 + `run3` v5.1.0, 12 scenarios):**
+- **Containment proven in both runs.** Lab egress was dropped by nftables, with nothing on the uplink.
+- **Measured attack types (10):** SYN, UDP, ICMP, TCP ACK and TCP RST floods; NTP and DNS
+  reflection (simulated reflector); HTTP low-and-slow; LAND; a novel/OOD mix.
+  - **Fully detected (4):** UDP flood, NTP reflection, HTTP low-and-slow, ICMP flood.
+  - **Partial (6):** SYN, ACK and RST floods; DNS reflection; LAND; novel mix.
+  - L1 fired on all 10. The rule-based L3 did **not detect** the SYN, ACK and RST floods or the
+    novel mix.
 - **2 false positives** (a flash crowd tripped the L1 rate thresholds).
-- **The ML ensemble missed the lab SYN flood entirely.** Detection came from the L1 rules and the
-  rule-based L3. Coverage matrix, MTTD and findings:
-  [`docs/purple_team/README.md`](docs/purple_team/README.md).
+- **The ML ensemble missed the lab SYN flood entirely** (0/1,452; also 0/20 ICMP flows). v5.1.0
+  traced this to the training data: lab-shaped flows are 46:1 `Benign` in CIC-DDoS2019. It is a
+  documented limitation, not retrained.
+- Not measured: multi-Gbps floods, real reflectors, slow-read, carpet-bombing.
+
+Coverage matrix, MTTD and findings: [`docs/purple_team/README.md`](docs/purple_team/README.md).
 
 ---
 
@@ -399,7 +412,7 @@ No IP is blocked, no firewall rule is installed, and no container is isolated wi
 - Traffic analysis and flow feature extraction
 - Attack classification (13-class taxonomy)
 - Threat scoring (0–100 severity scale)
-- LLM-based reasoning and incident correlation (Nemotron 3 Ultra)
+- LLM-based reasoning and incident correlation (Nemotron 3.5 Lightning; Ultra optional)
 - Mitigation recommendation (what action to take and why)
 
 **Humans decide:**
@@ -468,7 +481,7 @@ The platform operates across four coordinated layers, forming a defense-in-depth
                            │ High-Confidence Alerts & Anomalies
                            ▼
  ┌─────────────────────────────────────────────────────────────┐
- │ Layer 3: Generative LLM Reasoning Agent (Nemotron 3 Ultra)   │
+ │ Layer 3: Generative LLM Reasoning Agent (Nemotron Lightning) │
  │ • Multi-flow alert correlation & attacker attribution       │
  │ • False-positive suppression & threat intelligence lookup   │
  │ • Contextual mitigation strategy recommendation             │
@@ -504,7 +517,7 @@ The platform operates across four coordinated layers, forming a defense-in-depth
 - **SequenceClassifier (BiLSTM)**: Optional secondary model for temporal flow analysis, with documented synthetic-windowing caveat.
 
 ### 3. Layer 3 AI Security Analyst (`src/agent/nemotron_agent.py`)
-- Powered by **NVIDIA Nemotron 3 Ultra** via NVIDIA NIM / OpenRouter APIs.
+- Powered by **NVIDIA Nemotron 3.5 Lightning** (default since v5.1.0; `NEMOTRON_MODEL` overrides) via NVIDIA NIM / OpenRouter APIs.
 - Triages security alerts, correlates distributed spoofed sources, cross-references threat scores, and generates human-readable incident summaries with actionable mitigation recommendations.
 - Implements strict fallback heuristics when API quotas or offline constraints apply.
 

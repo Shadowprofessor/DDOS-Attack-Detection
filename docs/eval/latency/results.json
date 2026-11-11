@@ -1,5 +1,6 @@
 {
-  "run": "run2",
+  "run": "run2,run3",
+  "model_fingerprint": "8227aabfc5cb",
   "hardware": {
     "os": "Windows 11",
     "machine": "AMD64",
@@ -9,54 +10,55 @@
     "ram_gb": 15.7,
     "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU"
   },
-  "flows_benchmarked": 1600,
+  "flows_benchmarked": 2021,
   "ood_model_backed": true,
   "processing_latency": {
     "L1": {
-      "n": 1600,
-      "p50_ms": 0.2752,
-      "p95_ms": 6.5098,
-      "p99_ms": 12.8069,
-      "mean_ms": 1.0092,
-      "max_ms": 29.4256
+      "n": 2021,
+      "p50_ms": 0.2563,
+      "p95_ms": 6.0535,
+      "p99_ms": 12.0451,
+      "mean_ms": 1.0172,
+      "max_ms": 53.4683
     },
     "L2": {
-      "n": 1600,
-      "p50_ms": 67.0104,
-      "p95_ms": 69.995,
-      "p99_ms": 71.1209,
-      "mean_ms": 67.1637,
-      "max_ms": 83.2541
+      "n": 2021,
+      "p50_ms": 68.1837,
+      "p95_ms": 72.0209,
+      "p99_ms": 77.0019,
+      "mean_ms": 68.493,
+      "max_ms": 124.8628
     },
     "OOD": {
-      "n": 1600,
-      "p50_ms": 13.0926,
-      "p95_ms": 14.2195,
-      "p99_ms": 15.1507,
-      "mean_ms": 13.1525,
-      "max_ms": 16.6222
+      "n": 2021,
+      "p50_ms": 13.6007,
+      "p95_ms": 15.0047,
+      "p99_ms": 16.2102,
+      "mean_ms": 13.6881,
+      "max_ms": 29.9947
     },
     "end_to_end_per_flow": {
-      "n": 1600,
-      "p50_ms": 80.683,
-      "p95_ms": 87.0241,
-      "p99_ms": 94.5829,
-      "mean_ms": 81.3254,
-      "max_ms": 110.2135
+      "n": 2021,
+      "p50_ms": 82.4564,
+      "p95_ms": 90.4929,
+      "p99_ms": 96.8713,
+      "mean_ms": 83.1984,
+      "max_ms": 144.6947
     }
   },
   "l3_rule_per_incident": {
-    "n": 1200,
-    "p50_ms": 0.1258,
-    "p95_ms": 0.1915,
-    "p99_ms": 0.2662,
-    "mean_ms": 0.1291,
-    "max_ms": 0.6748
+    "n": 1800,
+    "p50_ms": 0.1148,
+    "p95_ms": 0.1701,
+    "p99_ms": 0.2587,
+    "mean_ms": 0.1196,
+    "max_ms": 0.4531
   },
   "warnings_during_benchmark": [],
   "mttd": [
     {
       "scenario": "benign_baseline",
+      "run": "run2",
       "flows": 413,
       "ml_scored_every_k_flows": 1,
       "L1_first_alert_s": 0.637,
@@ -68,6 +70,7 @@
     },
     {
       "scenario": "dns_reflection_sim",
+      "run": "run2",
       "flows": 33885,
       "ml_scored_every_k_flows": 23,
       "L1_first_alert_s": 2.233,
@@ -79,6 +82,7 @@
     },
     {
       "scenario": "flash_crowd",
+      "run": "run2",
       "flows": 557,
       "ml_scored_every_k_flows": 1,
       "L1_first_alert_s": 0.536,
@@ -90,6 +94,7 @@
     },
     {
       "scenario": "http_low_and_slow",
+      "run": "run2",
       "flows": 300,
       "ml_scored_every_k_flows": 1,
       "L1_first_alert_s": 117.274,
@@ -101,6 +106,7 @@
     },
     {
       "scenario": "novel_ood_mix",
+      "run": "run2",
       "flows": 31065,
       "ml_scored_every_k_flows": 21,
       "L1_first_alert_s": 1.405,
@@ -112,6 +118,7 @@
     },
     {
       "scenario": "ntp_reflection_sim",
+      "run": "run2",
       "flows": 33885,
       "ml_scored_every_k_flows": 23,
       "L1_first_alert_s": 1.177,
@@ -123,17 +130,19 @@
     },
     {
       "scenario": "syn_flood",
+      "run": "run2",
       "flows": 34843,
       "ml_scored_every_k_flows": 24,
       "L1_first_alert_s": 0.981,
       "L2_first_alert_s": null,
       "OOD_first_alert_s": 12.288,
-      "L3_first_alert_s": 2.0,
-      "L3_attack_type": "HTTP flood (L7)",
+      "L3_first_alert_s": null,
+      "L3_attack_type": null,
       "scenario_duration_s": 60.8
     },
     {
       "scenario": "udp_flood",
+      "run": "run2",
       "flows": 86242,
       "ml_scored_every_k_flows": 58,
       "L1_first_alert_s": 1.29,
@@ -142,6 +151,54 @@
       "L3_first_alert_s": 1.0,
       "L3_attack_type": "UDP flood",
       "scenario_duration_s": 60.7
+    },
+    {
+      "scenario": "icmp_flood",
+      "run": "run3",
+      "flows": 20,
+      "ml_scored_every_k_flows": 1,
+      "L1_first_alert_s": 55.81,
+      "L2_first_alert_s": null,
+      "OOD_first_alert_s": null,
+      "L3_first_alert_s": 56.0,
+      "L3_attack_type": "ICMP flood",
+      "scenario_duration_s": 61.0
+    },
+    {
+      "scenario": "tcp_ack_flood",
+      "run": "run3",
+      "flows": 31278,
+      "ml_scored_every_k_flows": 21,
+      "L1_first_alert_s": 1.233,
+      "L2_first_alert_s": 1.23,
+      "OOD_first_alert_s": 1.23,
+      "L3_first_alert_s": null,
+      "L3_attack_type": null,
+      "scenario_duration_s": 61.0
+    },
+    {
+      "scenario": "tcp_rst_flood",
+      "run": "run3",
+      "flows": 59263,
+      "ml_scored_every_k_flows": 40,
+      "L1_first_alert_s": 1.475,
+      "L2_first_alert_s": 12.361,
+      "OOD_first_alert_s": 53.54,
+      "L3_first_alert_s": null,
+      "L3_attack_type": null,
+      "scenario_duration_s": 61.3
+    },
+    {
+      "scenario": "land_attack",
+      "run": "run3",
+      "flows": 1,
+      "ml_scored_every_k_flows": 1,
+      "L1_first_alert_s": 60.784,
+      "L2_first_alert_s": 60.784,
+      "OOD_first_alert_s": 60.784,
+      "L3_first_alert_s": 61.0,
+      "L3_attack_type": "TCP SYN flood",
+      "scenario_duration_s": 61.0
     }
   ]
 }
