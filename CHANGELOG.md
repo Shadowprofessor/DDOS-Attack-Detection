@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] — 2026-11-11
+
+### Added — threat hunting + security self-assessment
+- **Two hypothesis-driven hunts** (`docs/hunts/README.md`, rules in `src/hunt/rules.py`):
+  H1 low-rate distributed reflection (≥50 reflectors, each ≤20 pps, together ≥200 pps from
+  amplification source ports) and H2 distributed slow-read L7 abuse (long HTTP flows with tiny
+  client windows and starved downloads across ≥10 sources). Both were executed over the v4.6.1
+  lab flows (~221k): **no findings**, which is expected for that data. Inputs were verified as
+  populated, and neither rule fires on the flash crowd. Not yet validated on positive traffic.
+- **STRIDE threat model** (`docs/security/STRIDE.md`): 18 threats, each with its in-code
+  mitigation, the test/CI evidence, and residual risk.
+- **Bug-hunt report** (`docs/security/bug_hunt.md`): 12 items covering authz/IDOR, CSRF, SSRF,
+  injection, deserialisation, rate limits and more.
+
+### Fixed (bug hunt)
+- IR write endpoints had no rate limit. Now limited per actor (`DDOS_IR_WRITE_RATE_PER_MIN`, 120).
+- `/api/chat` (each message may be an LLM call) had no rate limit. Now limited per key
+  (`DDOS_CHAT_RATE_PER_MIN`, 20).
+- `/api/chat` no longer returns 500 on a non-object JSON body; messages are capped at 2,000 chars.
+
+### Tests
+- `tests/test_hunt_rules.py` (11, positive + negative per rule), `tests/test_bug_hunt_fixes.py` (7).
+- Gated like CI (no `NVIDIA_API_KEY`). The opt-in live NIM test failed locally on two runs because
+  of the NVIDIA endpoint (60 s read timeout, then HTTP 503), not because of a code change. It is
+  re-checked before v5.0.0.
+
 ## [4.6.1] — 2026-11-11
 
 ### Added — purple-team lab runs (owner-approved traffic generation; docs: `docs/purple_team/README.md`)

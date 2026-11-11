@@ -188,6 +188,17 @@ all tested in CI.
 
 ---
 
+## 🔎 Threat Hunting & Security Review (v4.7.0)
+
+- **Hunts:** two documented hypotheses with rules and tests, run over the lab data:
+  low-rate distributed reflection, and distributed slow-read
+  ([`docs/hunts/README.md`](docs/hunts/README.md)).
+- **STRIDE threat model:** [`docs/security/STRIDE.md`](docs/security/STRIDE.md).
+- **Bug hunt:** [`docs/security/bug_hunt.md`](docs/security/bug_hunt.md). 12 items; the fixed ones
+  (rate limits on IR writes and LLM chat, chat input handling) have regression tests.
+
+---
+
 ## 🖥️ SOC Web App (v4.3 – v4.5)
 
 A React SOC console served at **`/app`**: login, an overview with KPIs and CERT-In countdowns,
