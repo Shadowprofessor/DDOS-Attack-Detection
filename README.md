@@ -15,6 +15,8 @@ An advanced, defense-in-depth Distributed Denial of Service (DDoS) detection, at
 > fallback). Read the **[technical report](REPORT.md)** for the honest evaluation: strong
 > same-dataset numbers, inconclusive cross-dataset, and a real lab run where the ML missed a SYN
 > flood but the rules caught most attacks. **[60-second demo](docs/DEMO.md)**.
+> **[Runbook](docs/RUNBOOK.md)**: copy-paste commands for every way to run it (app, scoring, replay, Mininet lab, analysis, tests).
+> **[Detection time](docs/DETECTION_LATENCY.md)**: measured ~81 ms per flow end-to-end, and lab attacks flagged by L1 within ~1–2 s of starting (window-bound).
 
 ```mermaid
 flowchart LR

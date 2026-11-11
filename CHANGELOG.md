@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] — 2026-11-11
+
+Docs and a benchmark script only. **No behaviour change.**
+
+### Added
+- `docs/RUNBOOK.md`: copy-paste blocks for every way to run the system. Covers one-time setup
+  (Windows + WSL2 lab packages), the SOC app with demo keys, scoring one attack flow → PENDING
+  proposal, replaying a scenario, the Mininet lab (sudo, ~11 min, kill switch), analysing pcaps →
+  coverage matrix, and the full test suite (CI parity). Each block has expected output, how to
+  stop it, and whether it needs WSL2/sudo. Blocks B–D were run live, in bash and PowerShell.
+- `scripts/detection_latency.py` + `docs/DETECTION_LATENCY.md`: detection time from real data.
+  - Per-stage processing latency on 1,600 real lab flows (p50/p95/p99): L1 0.28 ms, L2 RF+XGB
+    67.0 ms, OOD 13.1 ms, **end-to-end ~81 ms/flow** (p50), L3 rules 0.13 ms per incident.
+  - Per-layer MTTD per scenario from the lab run: L1 0.9–2.2 s on floods and 117 s on
+    low-and-slow. Layers that never fired are reported as "not detected". Explicitly an upper
+    bound (ramp-up, aggregation windows, flow completion).
+  - Raw numbers in `docs/eval/latency/results.json`.
+- `tests/test_detection_latency.py` (6): the benchmark on a tiny synthetic set (fast in CI).
+- README: pointers to both docs.
+
 ## [5.0.0] — 2026-11-11
 
 ### BREAKING CHANGES
