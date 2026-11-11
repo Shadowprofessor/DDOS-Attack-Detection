@@ -113,7 +113,9 @@ def containment_test(net, hosts, scope, uplink: str) -> dict:  # pragma: no cove
         "lab_ping_victim": "1 received" in h.cmd(f"ping -c 1 -W 1 {scope.hosts['victim']}"),
         "lab_ping_nat_gw": "1 received" in h.cmd("ping -c 1 -W 1 10.99.0.254"),
     }
-    subprocess.run(["nft", "-f", str(nft_file)], check=True)  # list args: spaces in path are safe
+    # Normalise line endings first: a Windows checkout gives CRLF, which nft rejects (seen in run3).
+    rules = nft_file.read_bytes().decode("utf-8").replace(chr(13), "")  # drop every CR (CRLF -> LF)
+    subprocess.run(["nft", "-f", "-"], input=rules, text=True, check=True)
     before = _drop_count()
     boundary = nat.popen(["tcpdump", "-i", "nat0-eth0", "-n", "-l", f"host {TEST_NET}"])
     cap = nat.popen(["tcpdump", "-i", uplink, "-n", "-l", f"host {TEST_NET}"])
