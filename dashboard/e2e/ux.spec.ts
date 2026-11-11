@@ -106,7 +106,7 @@ test("settings shows release + config, never a secret", async ({ page }) => {
   expect(html).not.toContain(ADMIN_KEY);
 });
 
-test("legacy dashboard is flagged deprecated", async ({ request }) => {
-  const r = await request.get("/legacy");
-  expect(r.headers()["deprecation"]).toBe("true");
+test("legacy dashboard URLs redirect to the SOC app (removed in v5.0.0)", async ({ page }) => {
+  await page.goto("/dashboard");
+  await expect(page).toHaveURL(/\/app\/?$/);
 });

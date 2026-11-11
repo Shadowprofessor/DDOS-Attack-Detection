@@ -180,3 +180,4 @@ a.btn { text-decoration: none; display: inline-block; }
 .field select, .field input, .filters select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
 /* grid cells align; vertical spacing only between stacked (non-grid) cards */
 .grid > .card + .card { margin-top: 0; }
+.badge-degraded { color: var(--amber); border-color: var(--amber); }

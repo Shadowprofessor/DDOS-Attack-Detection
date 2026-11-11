@@ -142,7 +142,7 @@ from src.features.flow_extractor import CICFLOWMETER_FEATURE_NAMES
 from src.mitigation.manager import get_manager
 from src.models.ensemble import get_default_ensemble
 from src.web.realtime_dashboard.broadcaster import get_broadcaster
-from src.web.realtime_dashboard.router import router as dashboard_router, STATIC_DIR
+from src.web.realtime_dashboard.router import router as dashboard_router
 from src.agent.blue_team_expert import generate_incident_dossier
 
 @asynccontextmanager
@@ -532,9 +532,6 @@ from src.web import app_server as _soc_app  # noqa: E402
 
 app.include_router(session_router)
 _soc_app.install(app)
-if os.path.isdir(STATIC_DIR):
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/dashboard/static", StaticFiles(directory=STATIC_DIR), name="dashboard_static")
 
 
 @app.middleware("http")

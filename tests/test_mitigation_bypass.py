@@ -192,39 +192,51 @@ class TestMitigationBypassChecks:
 
     def test_dossier_modal_authorize_button_routes_strictly_through_manager_approve(self, clean_manager):
         """
-        Audit the new Dossier Modal 'Authorize & Execute Block' button code path:
-        1. Static code audit of app.js ensures modalApproveBtn ONLY triggers handleApproveAction(),
-           which exclusively issues a POST to /actions/approve/{actionId} with X-Admin-Key,
-           with zero direct execution calls or bypass parameters.
+        Audit the SOC app's "Approve and enforce" path (v5.0.0: re-pointed from the removed legacy
+        app.js to the React Approvals page; the guarantee is unchanged):
+        1. Static audit of dashboard/src: the ONLY client call that can approve is the Approvals
+           page's confirm-dialog handler, which issues POST /actions/approve/{id} through the
+           same-origin api() client (session cookie + CSRF token). No bypass endpoints/params.
         2. AST audit of scoring_service.py verifies that the only FastAPI endpoint invoking
            manager.approve() is the gated approve_action endpoint requiring verify_admin_key.
-        3. Functional end-to-end test verifies that triggering the modal button's endpoint
-           invokes PendingActionManager.approve() and executes only through the approval gate.
+        3. Functional end-to-end test verifies that the endpoint the button calls invokes
+           PendingActionManager.approve() and executes only through the approval gate.
         """
         import re
 
-        # 1. Static code audit of dashboard frontend modal logic
-        app_js_path = os.path.join(REPO_ROOT, "src", "web", "realtime_dashboard", "static", "app.js")
-        assert os.path.exists(app_js_path), f"Frontend file missing: {app_js_path}"
-        with open(app_js_path, "r", encoding="utf-8") as f:
-            app_js_content = f.read()
+        # 1. Static code audit of the SOC web app (dashboard/src)
+        src_dir = os.path.join(REPO_ROOT, "dashboard", "src")
+        approvals_path = os.path.join(src_dir, "pages", "Approvals.tsx")
+        client_path = os.path.join(src_dir, "api", "client.ts")
+        assert os.path.exists(approvals_path), f"Frontend file missing: {approvals_path}"
+        with open(approvals_path, "r", encoding="utf-8") as f:
+            approvals = f.read()
+        with open(client_path, "r", encoding="utf-8") as f:
+            client_ts = f.read()
 
-        # Verify modalApproveBtn exists and is wired to handleApproveAction
-        assert "modalApproveBtn" in app_js_content
-        assert re.search(r"modalApproveBtn\.addEventListener\(\s*[\"']click[\"']\s*,\s*\(\)\s*=>\s*\{[^}]*handleApproveAction\(activeModalActionId\)", app_js_content), (
-            "modalApproveBtn MUST strictly route to handleApproveAction(activeModalActionId)"
+        # Approve happens only via the confirm dialog -> act.mutate(kind "approve") -> POST /actions/approve/{id}
+        assert re.search(r'if \(v\.kind === "approve"\) return api\(`/actions/approve/\$\{id\}`, \{ method: "POST" \}\)', approvals), (
+            "Approve MUST strictly POST /actions/approve/{id} via the api() client"
         )
-
-        # Verify handleApproveAction only issues POST /actions/approve/${encodeURIComponent(actionId)} with X-Admin-Key
-        assert re.search(r"fetch\(\s*`/actions/approve/\$\{[^}]*actionId[^}]*\}`\s*,\s*\{\s*method:\s*[\"']POST[\"']", app_js_content), (
-            "handleApproveAction MUST strictly issue POST /actions/approve/{actionId}"
+        assert re.search(r"onConfirm=\{\(reason\) => \{\s*if \(pending\) act\.mutate\(", approvals), (
+            "Approve MUST only fire from the confirmation dialog's onConfirm"
         )
-        assert '"X-Admin-Key": adminKey' in app_js_content or "'X-Admin-Key': adminKey" in app_js_content
+        assert 'onClick={() => setPending({ kind: "approve", item: a })}' in approvals  # button only opens the dialog
+        # The api() client sends same-origin credentials and the CSRF token on POST
+        assert 'credentials: "same-origin"' in client_ts and 'headers.set("X-CSRF-Token", csrfToken)' in client_ts
 
-        # Verify no bypass execution parameters or unauthorized endpoints exist in app.js
-        assert "/execute" not in app_js_content
-        assert "/mitigate_direct" not in app_js_content
-        assert "auto_execute=true" not in app_js_content.lower()
+        # Exactly one approve call site in the whole app, and no bypass endpoints/params anywhere
+        hits = []
+        for root, _, files in os.walk(src_dir):
+            for name in files:
+                if name.endswith((".ts", ".tsx")) and not name.endswith((".test.ts", ".test.tsx")):
+                    with open(os.path.join(root, name), "r", encoding="utf-8") as f:
+                        text = f.read()
+                    if "/actions/approve" in text:
+                        hits.append(name)
+                    assert "/execute" not in text and "/mitigate_direct" not in text, name
+                    assert "auto_execute" not in text.lower(), name
+        assert hits == ["Approvals.tsx"], f"unexpected approve call sites: {hits}"
 
         # 2. Python AST audit of scoring_service.py
         scoring_path = os.path.join(REPO_ROOT, "src", "api", "scoring_service.py")

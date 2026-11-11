@@ -4,15 +4,12 @@ FastAPI Router for Real-time Dashboard and WebSocket Telemetry Stream.
 """
 import os
 from fastapi import APIRouter, WebSocket, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from src.web.realtime_dashboard.broadcaster import get_broadcaster
 from src.mitigation.manager import get_manager
 
 router = APIRouter()
 
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
 async def _require_api_key(request: Request):
@@ -53,21 +50,12 @@ async def websocket_dashboard_endpoint(websocket: WebSocket):
     )
 
 
-LEGACY_HEADERS = {
-    "Deprecation": "true",
-    "Link": '</app>; rel="successor-version"',
-    "Warning": '299 - "Legacy dashboard is deprecated; use /app. Removed in v5.0.0."',
-}
-
-
-@router.get("/dashboard", response_class=HTMLResponse)
-@router.get("/legacy", response_class=HTMLResponse)
-async def serve_dashboard_html():
-    """Legacy real-time dashboard (DEPRECATED: superseded by /app; removed in v5.0.0)."""
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path, media_type="text/html", headers=LEGACY_HEADERS)
-    return HTMLResponse("<h1>Real-Time Dashboard UI Not Found</h1>", status_code=404, headers=LEGACY_HEADERS)
+@router.get("/dashboard", include_in_schema=False)
+@router.get("/legacy", include_in_schema=False)
+async def legacy_dashboard_redirect():
+    """The legacy dashboard was removed in v5.0.0; its URLs redirect permanently to the SOC app."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/app/", status_code=308)
 
 
 @router.get("/api/session-detection-summary", dependencies=[Depends(_require_api_key)])

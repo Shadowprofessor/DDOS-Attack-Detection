@@ -341,22 +341,13 @@ def test_static_ast_audit_dashboard_no_direct_execution():
                             assert node.func.attr not in ("_execute_action", "Popen", "check_call", "check_output")
 
 
-def test_dashboard_html_and_static_assets_served():
-    """Verify GET /dashboard and static assets return 200 OK."""
+def test_legacy_dashboard_urls_redirect_to_soc_app():
+    """v5.0.0: the legacy static dashboard was removed; its URLs redirect permanently to /app."""
     client = TestClient(app)
-    resp = client.get("/dashboard")
-    assert resp.status_code == 200
-    assert "DDoS Defense SOC" in resp.text
-
-    css_resp = client.get("/dashboard/static/style.css")
-    assert css_resp.status_code == 200
-    assert "--bg-primary" in css_resp.text
-
-    js_resp = client.get("/dashboard/static/app.js")
-    assert js_resp.status_code == 200
-    assert "sessionStorage" in js_resp.text
-    # Condition 4: Confirm localStorage is NEVER used in frontend script
-    assert "localStorage" not in js_resp.text
+    for path in ("/dashboard", "/legacy"):
+        resp = client.get(path, follow_redirects=False)
+        assert resp.status_code == 308 and resp.headers["location"] == "/app/"
+    assert client.get("/dashboard/static/app.js").status_code == 404
 
 
 def test_dashboard_ws_degraded_flow_payload():
@@ -409,10 +400,9 @@ def test_dashboard_ws_degraded_flow_payload():
         assert flow_payload["feature_completeness"] == 0.7013
         assert flow_payload["degradation_reason"] == "host_ingress: 23 backward features unobserved and zero-filled"
 
-    # Verify frontend app.js includes degraded badge logic and action degradation_reason handling
-    js_resp = client.get("/dashboard/static/app.js")
-    assert js_resp.status_code == 200
-    assert "DEGRADED" in js_resp.text
-    assert "badge-degraded" in js_resp.text
-    assert "degradation_reason" in js_resp.text
+    # Verify the SOC app's live feed renders the degraded badge + reason (v5.0.0: was legacy app.js)
+    feed = open(os.path.join(REPO_ROOT, "dashboard", "src", "pages", "LiveFeed.tsx"), encoding="utf-8").read()
+    assert "DEGRADED" in feed
+    assert "badge-degraded" in feed
+    assert "degradation_reason" in feed and "degraded_confidence" in feed
 

@@ -70,11 +70,10 @@ def test_system_info_has_no_secrets(c):
         assert "/" not in a["name"] and "\\" not in a["name"]
 
 
-def test_legacy_alias_is_marked_deprecated(c):
+def test_legacy_urls_redirect_permanently(c):
     for path in ("/dashboard", "/legacy"):
-        r = c.get(path)
-        assert r.headers.get("deprecation") == "true"
-        assert "/app" in r.headers.get("link", "")
+        r = c.get(path, follow_redirects=False)
+        assert r.status_code == 308 and r.headers["location"] == "/app/"
 
 
 def test_legacy_stream_accepts_same_origin_session_cookie(c):
