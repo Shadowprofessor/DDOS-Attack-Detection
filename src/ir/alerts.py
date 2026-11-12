@@ -30,6 +30,7 @@ logger = logging.getLogger("ir.alerts")
 ALERT_EVENTS = obs_metrics.REGISTRY.counter("ddos_soc_alerts_total", "SOC alerts by kind and outcome.")
 WEBHOOK_SENDS = obs_metrics.REGISTRY.counter("ddos_alert_webhook_total", "Alert webhook posts by outcome.")
 
+DISCORD_HOSTS = frozenset({"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"})
 LEVELS = {5: "critical", 4: "high", 3: "medium", 2: "low", 1: "low", 0: "info"}
 _CTRL = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -65,7 +66,7 @@ class WebhookSender:
 
     @property
     def kind(self) -> str:
-        if self.host.endswith("discord.com") or self.host.endswith("discordapp.com"):
+        if self.host in DISCORD_HOSTS:  # exact hostnames, never a suffix match
             return "discord"
         if self.host == "hooks.slack.com":
             return "slack"

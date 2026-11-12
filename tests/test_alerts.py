@@ -8,7 +8,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import src.api.scoring_service as api_module
-from src.api.scoring_service import app
 from src.ir.alerts import AlertEngine, WebhookSender, clean
 from src.ir.runtime import IRRuntime, set_ir_runtime
 from src.mitigation.manager import PendingActionManager
@@ -96,6 +95,11 @@ def test_untrusted_text_is_cleaned():
 
 
 class TestWebhook:
+    def test_lookalike_hosts_are_not_discord(self):
+        assert WebhookSender("https://evil-discord.com/api/webhooks/1/x").kind == "generic"
+        assert WebhookSender("https://discord.com.evil.example/hook").kind == "generic"
+        assert WebhookSender("https://ptb.discord.com/api/webhooks/1/x").kind == "discord"
+
     def test_off_by_default(self):
         assert WebhookSender.from_env({}) is None
 
@@ -163,7 +167,7 @@ def env(tmp_path, monkeypatch):
     rt.alerts.webhook._post = lambda u, b: posts.append(json.loads(b)) or 204
     set_ir_runtime(rt)
     try:
-        with TestClient(app) as client:
+        with TestClient(api_module.app) as client:
             yield client, rt, posts
     finally:
         set_ir_runtime(None)

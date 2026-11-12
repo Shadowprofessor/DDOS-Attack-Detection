@@ -88,7 +88,8 @@ test("settings: admin sends a test alert; recent alerts are listed; webhook is o
   await expect(admin.getByRole("status")).toContainText("Test alert sent.");
   await expect(page.getByRole("status").filter({ hasText: "Test alert" }).first()).toBeVisible(); // medium -> polite toast
   await expect(admin.getByRole("list", { name: "Recent alerts" })).toContainText("Test alert");
-  expect(await page.content()).not.toMatch(/discord\.com\/api\/webhooks|hooks\.slack\.com/);
+  const html = await page.content();
+  for (const secretish of ["discord.com/api/webhooks", "hooks.slack.com", "api.telegram.org/bot"]) expect(html.includes(secretish)).toBe(false);
 });
 
 test("demo path: live attack -> agent plan -> admin approves -> enforcer applied -> traffic drops on the chart", async ({ page, request }) => {
