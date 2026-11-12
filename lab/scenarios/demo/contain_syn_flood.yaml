@@ -1,5 +1,5 @@
 id: contain_syn_flood
-name: Containment demo: SYN flood (120 s)
+name: "Containment demo - SYN flood (120 s)"
 label: Syn
 attack: true
 mitre: [T1499.001, T1498.001]

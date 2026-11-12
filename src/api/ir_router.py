@@ -378,7 +378,10 @@ async def ws_incidents(websocket: WebSocket):
             key = None
     principal = principal_for_key(key if isinstance(key, str) else None)
     if principal is None:
-        await websocket.close(code=1008)
+        try:  # the client may already have gone (it disconnected during the auth wait): nothing to close
+            await websocket.close(code=1008)
+        except RuntimeError:
+            pass
         return
     hub = get_ir_runtime().hub
     hub.add(websocket, asyncio.get_running_loop())

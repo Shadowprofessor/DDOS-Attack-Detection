@@ -1,5 +1,5 @@
 id: contain_udp_flood
-name: Containment demo: UDP flood (120 s)
+name: "Containment demo - UDP flood (120 s)"
 label: UDP
 attack: true
 mitre: [T1498.001]
