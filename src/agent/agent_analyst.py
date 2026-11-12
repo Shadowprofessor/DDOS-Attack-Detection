@@ -250,6 +250,23 @@ def enforce_plan_policy(plan: AgentPlan, tools: Optional["AgentTools"] = None) -
                 st.coverage = tools.coverage(st.action, st.target)
         keep.append(st)
     lab = [st for st in keep if st.action.startswith("LAB_") and st.coverage is not None]
+    if tools is not None and not any(st.coverage >= EFFECTIVE for st in lab):
+        # v6.0.0 (live7): the model gave only weak steps (or none). The platform adds the port drop its own
+        # OVS counters say would stop most of the attack. Still only a proposal: an admin must approve it.
+        from lab.containment import BLOCKABLE_ROLES
+
+        cov = {r: tools.coverage("LAB_OVS_PORT_DROP", r) for r in BLOCKABLE_ROLES}
+        role, c = max(((r, v) for r, v in cov.items() if v is not None), key=lambda x: x[1], default=(None, None))
+        if role is not None and c >= EFFECTIVE:
+            step = PlanStep(rank=1, action="LAB_OVS_PORT_DROP", target=role, blast_radius="medium", reversible=True,
+                            ttl_s=300, coverage=c,
+                            rationale=(f"Added by the platform: the {role} switch port carries {c:.0%} of the attack "
+                                       "traffic (OVS counters). Drops every packet from that port for the TTL."))
+            first = next((st for st in keep if st.action.startswith("LAB_")), None)
+            keep.insert(keep.index(first) if first else 0, step)
+            lab = [step] + lab
+            violations.append(f"added: LAB_OVS_PORT_DROP {role} stops {c:.0%} of the attack traffic; the plan's "
+                              f"best lab step stopped {max((st.coverage for st in lab[1:]), default=0):.0%}")
     if lab:
         first, best = lab[0], max(lab, key=lambda x: x.coverage)
         if first.coverage < EFFECTIVE and best.coverage > first.coverage:

@@ -62,6 +62,12 @@ def test_score_flow_never_proposes_blocking_a_victim_under_live_alert(c, monkeyp
                     json={"features": {"src_ip": V, "dst_ip": "10.99.0.120", "Protocol": 17}}).json()
     assert r["result"]["is_attack"] and r["result"]["proposed_action_id"] is None
     assert not any(a["attacker_ip"] == V for a in mgr.get_pending().values())
+    # a non-lab attacker can still be proposed (PENDING)
     r2 = client.post("/score/flow", headers={"X-API-Key": "live4-key"},
+                     json={"features": {"src_ip": "172.16.5.20", "dst_ip": V, "Protocol": 17}}).json()
+    assert r2["result"]["proposed_action_id"]
+    # v6.0.0 (live7): a lab attacker gets no host-level proposal; lab containment goes via the agent plan
+    r3 = client.post("/score/flow", headers={"X-API-Key": "live4-key"},
                      json={"features": {"src_ip": "10.99.0.120", "dst_ip": V, "Protocol": 17}}).json()
-    assert r2["result"]["proposed_action_id"]  # the real attacker can still be proposed (PENDING)
+    assert r3["result"]["is_attack"] and r3["result"]["proposed_action_id"] is None
+    assert not any(a["attacker_ip"] == "10.99.0.120" for a in mgr.get_pending().values())

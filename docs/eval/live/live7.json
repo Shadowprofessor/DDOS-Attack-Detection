@@ -1,0 +1,51 @@
+{
+  "victim": "10.99.0.10",
+  "results": [
+    {
+      "scenario": "contain_syn_flood",
+      "attack": true,
+      "duration_s": 120.72,
+      "alerted": true,
+      "window_s": 1.37,
+      "website_s": 3.49,
+      "incident_s": 3.52,
+      "l3_verdict": "SYN flood",
+      "l3_source": "llm:nvidia/nemotron-3.5-lightning-30b-a3b",
+      "l2_s": 28.56,
+      "l2_label": "Syn",
+      "corroboration_s": null,
+      "scored_flows": 184,
+      "attack_verdicts": 165,
+      "episodes": 2,
+      "offline_l1_s": null,
+      "offline_run": null
+    },
+    {
+      "scenario": "contain_udp_flood",
+      "attack": true,
+      "duration_s": 120.69,
+      "alerted": true,
+      "window_s": 1.59,
+      "website_s": 3.04,
+      "incident_s": 3.05,
+      "l3_verdict": "SYN flood mislabelled by ML; actual traffic is UDP flood from 20 sources to victim 10.99.0.10",
+      "l3_source": "llm:nvidia/nemotron-3.5-lightning-30b-a3b",
+      "l2_s": 10.57,
+      "l2_label": "DNS",
+      "corroboration_s": null,
+      "scored_flows": 230,
+      "attack_verdicts": 186,
+      "episodes": 1,
+      "offline_l1_s": null,
+      "offline_run": null
+    }
+  ],
+  "clock": {
+    "min_wall_minus_packet_s": 0.35,
+    "post_lag_p50_s": 2.95,
+    "post_lag_max_s": 14.97,
+    "note": "wall = Windows clock at the bridge; packet = WSL2 capture clock. The minimum gap is an upper bound on (WSL2 clock behind Windows + capture-to-read delay)."
+  },
+  "run": "live7",
+  "containment": []
+}
