@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isAdmin, logout, useAuth } from "../auth/store";
 import { useLiveStatus, useLiveUpdates } from "../live/useLive";
 import { LoginPage } from "../pages/Login";
+import { Toaster } from "./Toaster";
 
 export function Layout() {
   const auth = useAuth();
@@ -52,6 +53,7 @@ export function Layout() {
       <main id="main" tabIndex={-1}>
         <Outlet />
       </main>
+      <Toaster />
     </div>
   );
 }

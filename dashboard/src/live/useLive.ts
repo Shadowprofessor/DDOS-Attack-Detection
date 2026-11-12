@@ -3,6 +3,7 @@
 // refetchInterval keeps polling, so the UI degrades gracefully.
 import { useEffect, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { pushAlert, type SocAlert } from "../alerts/alerts";
 
 export type LiveStatus = "connecting" | "live" | "offline";
 
@@ -30,6 +31,7 @@ export interface LiveEvent {
   type: string;
   incident_id?: string;
   incident?: { id: string };
+  alert?: SocAlert;
 }
 
 /** Which queries an event makes stale. Exported for unit tests. */
@@ -38,6 +40,7 @@ export function keysFor(ev: LiveEvent): string[][] {
   const keys: string[][] = [["overview"], ["incidents"]];
   if (id) keys.push(["incident", id]);
   if (ev.type.startsWith("rollback.") || ev.type === "incident.created") keys.push(["approvals"]);
+  if (ev.type === "alert") return [["alerts"]];
   return keys;
 }
 
@@ -78,6 +81,7 @@ export function useLiveUpdates(enabled: boolean): void {
           setStatus("live");
           return;
         }
+        if (ev.type === "alert" && ev.alert) pushAlert(ev.alert);
         apply(qc, ev);
       };
       ws.onclose = () => {

@@ -35,6 +35,8 @@ export default defineConfig({
       // scheduler ON: approved blocks get a real rollback countdown (default TTL 600 s)
       DDOS_IR_SCHEDULER: "on",
       DDOS_LOGIN_RATE_PER_MIN: "100",
+      // earlier specs seed many incidents within a minute; the default alert limit (10/min) is unit-tested
+      DDOS_ALERT_RATE_PER_MIN: "1000",
       NVIDIA_API_KEY: "",
     },
   },

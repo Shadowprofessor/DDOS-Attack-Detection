@@ -1,4 +1,4 @@
-# DDoS Detection & Mitigation Platform: Technical Report (v5.4.0)
+# DDoS Detection & Mitigation Platform: Technical Report (v6.0.0)
 
 Author: Sachit Sharma. Licence: MIT.
 
@@ -13,6 +13,22 @@ SDN and cloud-edge networks. It has four layers:
 
 Around them sit an incident-response backend, a SOC web app, and a purple-team lab with
 code-enforced containment.
+
+**Final numbers at a glance (v6.0.0)**
+
+| What | Number | Where it comes from |
+|---|---|---|
+| Lab detection, **held-out** run4 (never tuned on) | **10/10** attacks detected and named; **0** false positives (benign + flash crowd) | §5.3, `docs/purple_team/dev_vs_heldout.md` |
+| Lab detection, DEV runs 2+3 (tuned on) | 10/10; 0 false positives | same |
+| Offline flood MTTD, held-out | 1.2–1.4 s | §5.3 |
+| **Live MTTD** (attack start → alert on the website), 7 floods, live4–live8 | 2.66–8.55 s, **median 4.89 s** | §5.6, `docs/eval/live/` |
+| **Live MTTC** (admin approval → victim < 100 pps), live8 | **2.63 s** (rule on switch 0.61 s; 2,997 → 0 pps, 100%) | §5.6 |
+| Attack start → contained, live8 (includes the human approving) | 41.16 s | §5.6 |
+| Triage, attack type correct, held-out: rules / Lightning / ML | **10/10 / 8/10 / 7/10** | §5.6, `docs/eval/triage/` |
+| Lightning's recorded live error | UDP flood called "SYN flood" in 3 of 4 live runs | §5.6, §7 |
+| L2 macro-F1: CIC test_real_v2 / held-out lab | 0.917 / 0.800 | §5.5 |
+| Prompt-injection success with defences | 0/31 (static payloads) | §4 |
+| Lab egress containment probes dropped | 3/3 in each of 13 runs (run2–4, train1, live1–8); 0 on the uplink. One earlier diagnostic run was inconclusive (the probe never reached the boundary) | §5.3, `data/lab_runs/*/manifest.json` |
 
 **What the evidence supports**
 - **Binary detection on CIC-DDoS2019 is very high, but only same-dataset:** detection rate 100%,
@@ -68,6 +84,8 @@ flowchart LR
 | IR backend | `src/ir/`, `src/api/ir_router.py` | SQLite/SQLAlchemy, lifecycle, playbooks, CERT-In, export, rollback, replay |
 | SOC app | `dashboard/` | React 19 + Vite + TS; sessions, CSRF, strict CSP, axe-clean |
 | Lab | `lab/` | scope/safety, scenarios, gated generator, Mininet orchestrator, nftables containment |
+| Agent + lab containment | `src/agent/agent_analyst.py`, `lab/containment.py`, `lab/traffic/enforcer.py` | read-only tools → ranked plan with measured coverage; approved lab rules queued → OVS `hard_timeout` drops (v5.4.0) |
+| Alerts | `src/ir/alerts.py`, `dashboard/src/alerts/` | toasts, severity sound, browser notifications, optional webhook; dedupe + rate limit; CERT-In warnings (v6.0.0) |
 
 ## 3. Key design decisions
 
@@ -264,53 +282,72 @@ crowd. They have not been validated on positive traffic yet.
 - CI: CodeQL (Python + JS/TS), Bandit, gitleaks, pip-audit, npm audit, CycloneDX SBOM per release,
   Playwright + axe-core, and this report's citation check.
 
-## 7. Limitations
-1. ML generalisation outside the lab is unproven.
-   - v5.3.0 L2 is good on a held-out lab run (99.95% attack detection) only after training on
-     lab traffic from the same generator, which is likely an inflated upper bound.
-   - It is weak on ICMP, reflection and Slowloris classes, and false-positives on 2-packet TCP
-     fragments.
-   - Real-world detection still rests mostly on rules.
-   - The text below records the pre-v5.3.0 state.
-   The lab SYN miss is a training-distribution gap: answered sub-millisecond handshakes are
-   overwhelmingly `Benign` in CIC-DDoS2019, so the ensemble is not expected to flag them.
-2. L1 fixed thresholds false-positive on legitimate surges.
-3. The production low-and-slow rule still counts zero-byte flows ≥ 10 s as slow, which overlaps
-   with SYN floods. The L3 SYN rule (SYN ratio ≥ 0.7) cannot fire on an answered SYN flood (ratio
-   2/3). The rule analyst has no ACK, RST or LAND rule. The reflection rule reads
-   destination rather than source ports.
-4. No same-extractor cross-dataset test (CICIoT2023/CIC-IDS2017 pcaps through our extractor).
-5. Shared API keys, no per-user identity or MFA. `/metrics` is unauthenticated. Model artifacts
-   are not hash-pinned.
-6. Lab rates are modest (≤1,500 pkt/s, Python/scapy) and from a single host; no multi-Gbps floods.
-7. The injection evaluation uses static payloads; adaptive attacks are untested.
-8. **The LLM can name an attack wrongly** (measured).
-   - In live run 2 (v5.2.0), Nemotron 3.5 Lightning called a live **UDP flood "Benign / flash
-     crowd"**. It named the SYN and ICMP floods correctly.
-   - This is a measured triage error, not fixed by hard-coding.
-   - The rule analyst's verdict is shown next to the LLM's on every incident (v5.3.0).
-   - **Live, v5.4.0:** it called the UDP flood a "SYN flood" in 3 of 4 live runs (live4, live5,
-     live8), and named every SYN flood correctly. Its plans also proposed weak single-IP drops and
-     once put an IP address in a port-drop step. The platform's coverage check, not the model,
-     picks the effective step.
-9. The LLM provider is not reliable enough to depend on. At release time the live NVIDIA NIM
-   check timed out (60 s) after an earlier HTTP 503. The platform falls back to the deterministic
-   rule analyst, which is why no safety property depends on the LLM.
-   v5.1.0 live check with Lightning, run once:
-   - The first call returned no content: the model spent 911 of 1,024 tokens on reasoning and was
-     cut off (`finish_reason=length`).
-   - With reasoning disabled (`enable_thinking: false`) the live test passed in 7.9 s.
-   - A forced tool call in the probe returned severity 8, outside the 1–5 schema range. Schema
-     validation, retry and the rule fallback handle this, but it shows model output cannot be
-     trusted as-is.
+## 7. Limitations (final, v6.0.0)
+
+These are stated plainly so nobody has to discover them.
+
+1. **ML generalisation outside the lab is unproven.**
+   - L2 detects 99.95% of held-out lab attack flows only after training on lab traffic from the
+     same generator, so this is likely an inflated upper bound.
+   - It is weak on ICMP (recall 0.27), reflection (0.32) and Slowloris (0.50), and false-positives
+     on 2-packet TCP fragments.
+   - Cross-dataset CICIoT2023 is inconclusive (F1 1.00 → 0.05 depending on feature filling).
+   - Real-world detection rests mostly on the rules.
+2. **The rules were tuned on our own lab.**
+   - They were frozen before the held-out run, and held-out was 10/10 detected with 0 false
+     positives.
+   - But it is one generator, one network, and ≤ 1,500 pkt/s per flood from one host. Real
+     multi-Gbps floods, real flash crowds and carpet-bombing at scale were not tested.
+3. **The LLM misnames attacks** (measured, not hidden).
+   - Lightning got 8/10 attack types right on held-out; the rules got 10/10.
+   - Live, it called the **UDP flood a "SYN flood" in 3 of 4 runs** (live4, live5, live8), and
+     "Benign / flash crowd" in live2.
+   - Its containment plans proposed weak single-IP drops and once put an IP in a port-drop step.
+   - The rule verdict is shown next to it, and the platform's measured coverage, not the model,
+     picks the effective containment step.
+4. **The LLM provider is not reliable enough to depend on.**
+   - NVIDIA NIM timed out (60 s) and returned HTTP 503 at times.
+   - Lightning with reasoning on spent 911 of 1,024 tokens thinking and returned nothing.
+   - A forced tool call returned severity 8, outside the 1–5 schema range.
+   - Schema validation, retry and the rule fallback handle all of this. No safety property
+     depends on the LLM.
+5. **Live containment is proven once, on one attack shape.**
+   - live8: MTTC 2.63 s, 2,997 → 0 pps.
+   - The attack came from one switch port, so a port drop stops all of it. Spoofed sources spread
+     over many ports, or attacks from the victim's own segment, would need more than one rule.
+   - Earlier runs failed for operational reasons (live5: an ineffective rule; live6: the bridge
+     exited; live7: the wrong items were approved). Each was fixed in code, but the end-to-end
+     path has n = 1 success.
+6. **Attack start → contained is 41 s**, and most of that is a human reading and approving.
+   - That is deliberate (human in the loop), but it is slow for a real flood.
+   - There is no auto-approve option, by design; adding one is a decision for the owner, not for
+     the AI.
+7. **Live MTTD includes about 3 s of bridge lag** (p50 2.8–3.0 s, max 15 s): the bridge tails
+   pcaps from a shared disk. A sensor on the switch itself would be faster.
+8. **Security:**
+   - Keys are shared, with no per-user identity or MFA. `/metrics` is unauthenticated.
+   - Model artifacts are not hash-pinned.
+   - The injection evaluation uses static payloads only (0/31 with defences; adaptive attacks
+     untested). The regex instruction detector does not generalise (0/12 held-out).
+9. **Alerts:**
+   - Webhook formats (Discord, Slack, Telegram) are unit-tested against their documented JSON
+     shapes, not against the real services.
+   - Browser sound needs one click on the page first (autoplay rules).
+   - Notifications need the browser's permission.
+10. **CERT-In:** the 6-hour timer, its warnings and the report draft are implemented, but nothing
+    is ever submitted. A human reviews and sends the report. The timer uses detection time as
+    "noticed".
 
 ## 8. Future work
-Retrain or adapt the ML on lab and CICIoT2023 pcaps through our own extractor; adaptive
-per-destination L1 baselines; handshake-aware low-and-slow and source-port reflection rules;
-an answered-SYN-flood rule and ACK/RST/LAND rules for L3, validated on a fresh lab run; labelled
-lab-shaped SYN traffic from a run separate from the evaluation, for ML retraining; lab
-scenarios for ≥50 reflectors and slow-read; artifact hash pinning; per-user OIDC sign-in; an
-externally anchored timeline head hash.
+- A same-extractor cross-dataset test (CICIoT2023 / CIC-IDS2017 pcaps through our own extractor).
+- ML trained on traffic from a second, independent generator.
+- A switch-side sensor, to remove the ~3 s bridge lag.
+- Multi-port and multi-rule containment, with coverage summed across steps.
+- More live containment runs, to report MTTC as a distribution rather than n = 1.
+- Per-user OIDC sign-in and MFA.
+- Artifact hash pinning.
+- Adaptive injection testing.
+- An externally anchored timeline head hash.
 
 ## 9. References
 - I. Sharafaldin, A. H. Lashkari, S. Hakak, A. A. Ghorbani, "Developing Realistic Distributed

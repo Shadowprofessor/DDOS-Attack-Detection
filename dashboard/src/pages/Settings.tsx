@@ -1,6 +1,8 @@
-import { Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Fragment, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { notificationsSupported, prefs, requestNotifications, setPrefs, type SocAlert } from "../alerts/alerts";
+import { isAdmin, useAuth } from "../auth/store";
 import { formatDuration, formatTime } from "../lib/format";
 
 interface SystemInfo {
@@ -11,6 +13,75 @@ interface SystemInfo {
   models: { loaded: boolean; artifacts: { name: string; bytes: number; modified: number }[] };
   analyst: { base_url?: string; models?: string[]; timeout_s?: number; api_key_present?: boolean; prompt_version?: string; hash_ips?: boolean };
   incident_response: { rollback_ttl_s: number; rollback_max_attempts: number; cert_in_severity_threshold: number; cert_in_deadline_hours: number; cert_in_hash_iocs: boolean };
+}
+
+interface AlertsInfo {
+  alerts: SocAlert[];
+  webhook: { enabled: boolean; kind: string | null };
+  dedupe_s: number;
+  rate_per_min: number;
+}
+
+function AlertSettings() {
+  const auth = useAuth();
+  const [p, setP] = useState(prefs);
+  const [perm, setPerm] = useState<string>(notificationsSupported() ? Notification.permission : "unsupported");
+  const q = useQuery({ queryKey: ["alerts"], queryFn: () => api<AlertsInfo>("/api/alerts?limit=10"), refetchInterval: 30_000 });
+  const test = useMutation({ mutationFn: () => api<{ sent: boolean }>("/api/alerts/test", { method: "POST" }) });
+  return (
+    <div className="card">
+      <h2>Alerts</h2>
+      <p className="muted small">
+        Toasts appear on every page. Sound: 3 beeps critical, 2 high, 1 medium. These settings last until you reload the page.
+      </p>
+      <div className="row">
+        <label>
+          <input type="checkbox" checked={p.sound} onChange={(e) => setP(setPrefs({ sound: e.target.checked }))} /> Sound
+        </label>
+        <button
+          type="button"
+          className="btn"
+          disabled={perm === "unsupported" || perm === "denied"}
+          onClick={async () => {
+            const r = await requestNotifications();
+            setPerm(r);
+            setP(prefs());
+          }}
+        >
+          {perm === "granted" ? (p.notify ? "Browser notifications on" : "Turn on browser notifications") : perm === "denied" ? "Notifications blocked in this browser" : perm === "unsupported" ? "Notifications not supported" : "Allow browser notifications"}
+        </button>
+        {perm === "granted" && p.notify && (
+          <button type="button" className="btn ghost" onClick={() => setP(setPrefs({ notify: false }))}>Turn off</button>
+        )}
+        {isAdmin(auth) && (
+          <button type="button" className="btn" onClick={() => test.mutate()} disabled={test.isPending}>
+            Send test alert
+          </button>
+        )}
+      </div>
+      {test.data && <p role="status" className="small">{test.data.sent ? "Test alert sent." : "Held back by dedupe / rate limit (try again in 2 min)."}</p>}
+      {q.data && (
+        <>
+          <dl className="kv">
+            <dt>Webhook</dt><dd>{q.data.webhook.enabled ? `on (${q.data.webhook.kind})` : "off (set DDOS_ALERT_WEBHOOK_URL)"}</dd>
+            <dt>Dedupe</dt><dd>same alert at most once per {formatDuration(q.data.dedupe_s)}</dd>
+            <dt>Rate limit</dt><dd>{q.data.rate_per_min} per minute (a CERT-In breach always goes through)</dd>
+          </dl>
+          <h3 className="small">Recent alerts</h3>
+          <ul className="alert-list" aria-label="Recent alerts">
+            {q.data.alerts.length === 0 && <li className="muted small">None yet.</li>}
+            {q.data.alerts.map((a) => (
+              <li key={a.id} className="small">
+                <span className={`sev sev-${a.level === "info" ? "low" : a.level}`}>{a.level}</span>
+                <span>{a.title}</span>
+                <span className="muted">{formatTime(a.ts)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
 }
 
 const mb = (b: number) => `${(b / 1_048_576).toFixed(1)} MB`;
@@ -25,6 +96,7 @@ export function SettingsPage() {
       <h1 id="st-h">Settings &amp; health</h1>
       <p className="muted small">Read-only. Secrets are never sent to the browser; configuration changes go through the environment YAML / env vars.</p>
       <div className="grid two">
+        <AlertSettings />
         <div className="card">
           <h2>Platform</h2>
           <dl className="kv">

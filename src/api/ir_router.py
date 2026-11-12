@@ -361,6 +361,23 @@ def _ws_session_key(websocket: WebSocket) -> Optional[str]:
     return ws_session_key(websocket)
 
 
+# ----------------------------------------------------------------------------- alerts (v6.0.0)
+@router.get("/api/alerts")
+def list_alerts(limit: int = Query(50, ge=1, le=100), p: Principal = Depends(require_analyst)):
+    """Recent SOC alerts (deduplicated, rate-limited). The webhook URL is never returned."""
+    rt = get_ir_runtime()
+    wh = rt.alerts.webhook
+    return {"alerts": rt.alerts.list(limit), "webhook": {"enabled": wh is not None, "kind": wh.kind if wh else None},
+            "dedupe_s": rt.alerts.dedupe_s, "rate_per_min": rt.alerts.rate_per_min}
+
+
+@router.post("/api/alerts/test")
+def test_alert(p: Principal = Depends(require_admin)):
+    """Admin: send one test alert through the normal pipeline (toast, sound, webhook if configured)."""
+    a = get_ir_runtime().alerts.observe({"type": "alert.test"})
+    return {"sent": a is not None, "alert": a}
+
+
 @router.websocket("/ws/incidents")
 async def ws_incidents(websocket: WebSocket):
     """Server->client incident events. Auth: X-API-Key/X-Admin-Key header on the handshake, the

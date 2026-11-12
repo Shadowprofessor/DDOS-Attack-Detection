@@ -13,7 +13,7 @@ Node 24). Outputs below are from those runs.
 | E. Mininet purple-team lab | **yes** | **yes** | — | ~11 min |
 | F. Analyse lab pcaps | — | — | **yes** | ~25 min first time, ~7 min after |
 | G. Full test suite | — | — | optional | ~3–5 min |
-| H. Live demo (Mininet → SOC in real time) | **yes** | **yes** | **yes** | ~7 min |
+| H. Live demo (attack → alert → approved containment) | **yes** | **yes** | **yes** | ~6 min |
 
 ¹ `models/*.pkl|.joblib` are gitignored (see README → "Getting the data"). Without them the API
 falls back to a DummyClassifier: everything runs, but L2 verdicts are not meaningful.
@@ -214,63 +214,97 @@ a temporary DB.
 
 ---
 
-## H. Live demo: Mininet attack → SOC website in real time (v5.2.0)
+## H. Live demo: Mininet attack → alert → AI plan → human-approved containment (v6.0.0)
 
-Three terminals. The WSL side writes each scenario's pcap packet by packet (`tcpdump -U`) and the
-switch's port counters (`ovs-ofctl dump-ports`, read-only) into `data/lab_runs/<run>/` on the
-Windows disk. The Windows bridge tails those files and feeds the running platform through its API.
-**No WSL2 ↔ Windows network path is used**, so nothing in `.wslconfig` or the firewall has to
-change, and uvicorn stays bound to `127.0.0.1`.
+Four windows: three Windows PowerShell windows and one WSL Ubuntu terminal.
+- The WSL side writes each scenario's pcap packet by packet (`tcpdump -U`) and the switch's port
+  counters (`ovs-ofctl dump-ports`) into `data/lab_runs/<run>/` on the Windows disk.
+- The Windows bridge tails those files and feeds the running platform through its API.
+- **No WSL2 ↔ Windows network path is used.** Nothing in `.wslconfig` or the firewall changes, and
+  uvicorn stays bound to `127.0.0.1`.
 
-**1. Platform (Windows PowerShell).** Stop any older server on port 8000 first (it would not have the
-live API):
+**Keys, and who uses which**
+
+| Key | Role | Used by |
+|---|---|---|
+| `demo-analyst-key-01` | analyst | bridge, `demo_assist.py`, anyone **viewing** the website |
+| `demo-admin-key-0001` | admin | the **human who approves** containment on the Approvals page |
+
+These are throwaway demo keys, set in the environment and never in the repo. The analyst key
+cannot approve: `/actions/approve/{id}` returns 403 for it.
+
+Use a new run id each time (`live9`, `live10`, …). Start the windows **in this order**. Ctrl+C any
+old ones first: an old server does not have new code.
+
+**Window 1: platform.** `uvicorn` is called through Python because its `.exe` is usually not on PATH:
 ```powershell
-$env:DDOS_API_KEYS  = "demo-analyst-key-01"
-$env:DDOS_ADMIN_KEYS = "demo-admin-key-0001"
+$env:DDOS_API_KEYS = "demo-analyst-key-01"; $env:DDOS_ADMIN_KEYS = "demo-admin-key-0001"
+$env:NVIDIA_API_KEY = "<your key>"     # optional: without it the rule analyst answers
 python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000
 ```
-Open **http://localhost:8000/app/live-attack** and sign in with `demo-analyst-key-01`.
+Wait for `Application startup complete`.
 
-**Port:** the live demo always uses **8000**. The bridge reads the platform URL from `DDOS_API_URL`
-(default `http://127.0.0.1:8000`) and its key from `DDOS_LIVE_KEY` (else the first `DDOS_API_KEYS` entry).
-Sign in on the website with the **admin** key (`demo-admin-key-0001`) to approve or reject. Use the
-analyst key to only view.
+Optional, in the same window before starting: `$env:DDOS_ALERT_WEBHOOK_URL = "https://discord.com/api/webhooks/…"`
+(or a Slack incoming-webhook URL; for Telegram, `https://api.telegram.org/bot<token>/sendMessage`
+plus `$env:DDOS_ALERT_TELEGRAM_CHAT_ID`). It is off when unset. Only severity ≥ 4 is sent
+(`DDOS_ALERT_WEBHOOK_MIN_SEVERITY`). The URL is a secret: keep it in the environment only.
 
-**2. Bridge (second Windows terminal).** Start it *before* the lab run; it ignores pcaps that already exist:
+**Window 2: bridge.**
 ```powershell
-$env:DDOS_LIVE_KEY = "demo-analyst-key-01"
-python scripts/live_bridge.py data/lab_runs/live1 --reset
+$env:DDOS_LIVE_KEY = "demo-analyst-key-01"; python scripts/live_bridge.py data/lab_runs/live9 --reset
 ```
-Expected: `platform http://127.0.0.1:8000: {'status': 'ok', ...}` then `watching data\lab_runs\live1 ...`.
+Expected: `platform http://127.0.0.1:8000: {'status': 'ok', ...}`, then `watching data\lab_runs\live9 ...`.
+If the server is not up yet, it prints `waiting for the platform ...` and keeps trying.
 
-**3. Lab (WSL Ubuntu terminal, sudo).**
+**Window 3: demo assistant.** It does the analyst steps and **cannot approve**:
+```powershell
+$env:DDOS_LIVE_KEY = "demo-analyst-key-01"; python scripts/demo_assist.py
+```
+Expected: `watching for new [LIVE] incidents (N existing ignored)`.
+
+**Browser.** Open <http://localhost:8000/app/live-attack> and sign in with `demo-admin-key-0001`.
+- Settings → Alerts → *Allow browser notifications* (optional).
+- Settings → Alerts → *Send test alert*: you should hear one beep and see a toast.
+
+**Window 4: lab (WSL, sudo).**
 ```bash
 cd "/mnt/c/Users/Sachit Sharma/Documents/Sachit Main/DDoS-Detection-clean"
-sudo bash lab/live_demo.sh live1
+sudo mn -c; sudo CONTAIN=1 bash lab/live_demo.sh live9
 ```
-The sequence is benign → SYN flood → ICMP flood → flash crowd → UDP flood, with 15 s gaps
-(`DEMO_SCENARIOS` / `DEMO_GAP` override it). It takes about 7 minutes: containment proof ~30 s,
-then 60 s per scenario.
+The sequence is containment proof (~30 s), then a 120 s SYN flood, a 15 s gap, and a 120 s UDP flood.
+The lab enforcer starts with it and only applies rules an admin approved.
 
-What appears, and when:
-- **Within ~1–4 s of each flood starting:** the red "Attack in progress" banner, with the L1 rule
-  and its numbers, the pps/bps spike, top attackers, and the protocol/flag mix.
-- **Within ~1 s more:** a `[LIVE]` incident in the Incidents list. The rule analyst's (or Nemotron's)
-  verdict is on the incident page.
-- **About every 2 s:** OVS port counters per switch port, with the lab host on it.
-- **5 quiet seconds after a flood ends:** the banner clears and the alert history shows how long it
-  lasted.
-- **Benign and flash-crowd phases:** no banner is expected. Any banner there is a false positive and
-  is reported as one.
+**What appears, and when** (seconds from the flood starting; measured in live7/live8)
 
-**Afterwards:** `python scripts/live_mttd.py data/lab_runs/live1` writes the real-time MTTD table
-into `docs/DETECTION_LATENCY.md` and `docs/eval/live/results.json`.
+| When | Where | What |
+|---|---|---|
+| ~3–5 s | Live attack | Red "Attack in progress" banner with the L1 rule and its numbers; pps chart spikes to ~3k pkt/s (the alerting window closes at ~1.5–2 s; the bridge adds ~3 s) |
+| ~3–5 s | every page | **Alert toast** (high, 2 beeps) with the reason and "CERT-In report due by HH:MM UTC (6 h)"; browser notification if allowed; webhook if set |
+| ~5–10 s | Window 3 | `Proposed LAB_OVS_PORT_DROP attacker ... as PENDING action <id> >>> An ADMIN must approve it <<<` |
+| ~5–15 s | Incident page | "Why it was flagged", the AI verdict, and the agent plan with "Stops ~100% of the attack" |
+| when you approve | Approvals | Approve **only the id Window 3 printed** → *Approve and enforce* |
+| ~0.6 s after approval | Live attack → Lab containment | `applied` (OVS `hard_timeout=300,actions=drop` on the attacker port) |
+| ~2.6 s after approval | Live attack | pps chart falls to 0; banner clears ~5 quiet seconds later |
+| +300 s | Live attack | the rule expires by itself (`expired`); no permanent block |
 
-**Stop:**
-- `touch lab/KILL` in a second WSL terminal stops the generator within one tick; then `rm lab/KILL`.
-- `Ctrl+C` in the bridge and server terminals.
-- Nothing is ever blocked automatically. Any mitigation the platform proposes stays **PENDING**
-  on Approvals until an admin approves it.
+**Afterwards:** `python scripts/live_mttd.py data/lab_runs/live9` prints the live MTTD table and the MTTC
+table (from the switch counters), and writes `docs/eval/live/live9.json`.
+
+**Stop cleanly**
+1. `touch lab/KILL` in another WSL terminal. The generator stops within one tick, and the enforcer
+   deletes every lab rule (cookie `0x5AB0…`). Then `rm lab/KILL`.
+2. Ctrl+C in windows 3, 2, 1, in that order.
+3. `sudo mn -c` in WSL removes the Mininet switch and hosts.
+
+**Reset before the next run**
+- Use a new run id. The bridge's `--reset` clears the Live attack view.
+- Old PENDING items on Approvals: **reject** them, don't approve them.
+  - A lab proposal older than its TTL can no longer be approved.
+  - The enforcer refuses anything approved before it started.
+
+**Nothing is automatic.** The AI and `demo_assist.py` only propose. Every block is PENDING until an
+admin approves it in the website, through `PendingActionManager.approve()`. There is no
+auto-approve option.
 
 **Without WSL** (pipeline check only, recorded traffic): `python scripts/pcap_replay_live.py
 data/lab_runs/run2/syn_flood.pcap --out data/lab_runs/replay1` re-writes a recorded pcap into a

@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 from typing import Any, Optional, Set, Tuple
 
+from src.ir.alerts import AlertEngine, WebhookSender
 from src.ir.cert_in import CertInMonitor
 from src.ir.db import IRDatabase, database_url_from_config
 from src.ir.lifecycle import IncidentService
@@ -59,12 +61,21 @@ class IRRuntime:
         self.db = IRDatabase(database_url or database_url_from_config(config))
         self.hub = IncidentHub()
         kw = {"clock": clock} if clock else {}
-        self.service = IncidentService(self.db, self.settings, publish=self.hub.publish,
+        # v6.0.0: every IR event also goes through the alert engine (dedupe, rate limit, optional webhook)
+        self.alerts = AlertEngine(self.hub.publish, clock=clock or __import__("time").time,
+                                  webhook=WebhookSender.from_env(),
+                                  dedupe_s=float(os.environ.get("DDOS_ALERT_DEDUPE_S") or 120),
+                                  rate_per_min=int(os.environ.get("DDOS_ALERT_RATE_PER_MIN") or 10))
+        self.service = IncidentService(self.db, self.settings, publish=self._publish,
                                        manager_factory=manager_factory, **kw)
         self.playbooks = load_playbooks()
         self.rollback = RollbackScheduler(self.service)
         self.cert_in = CertInMonitor(self.service)
         self.replay = ReplayEngine(self.service)
+
+    def _publish(self, event: dict) -> None:
+        self.hub.publish(event)
+        self.alerts.observe(event)
 
     def start(self) -> None:
         self.rollback.start(extra_tick=self.cert_in.check)
