@@ -1,0 +1,26 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Security issue? Do **not** file it here; see SECURITY.md."
+  - type: input
+    id: version
+    attributes: { label: Version or commit, placeholder: "v6.1.0 / abc1234" }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: "Include the exact error text." }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: What you expected }
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Steps to reproduce, description: "RUNBOOK block letter if relevant (B, C, H...)." }
+    validations: { required: true }
+  - type: input
+    id: env
+    attributes: { label: Environment, placeholder: "Windows 11 + WSL2 Ubuntu, Python 3.14, Node 24" }

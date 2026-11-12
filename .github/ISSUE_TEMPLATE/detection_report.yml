@@ -1,0 +1,24 @@
+name: Detection result (false positive / missed attack)
+description: The platform flagged benign traffic, missed an attack, or named it wrongly
+labels: [detection]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [False positive, Missed attack, Wrong attack type, Wrong containment plan]
+    validations: { required: true }
+  - type: textarea
+    id: traffic
+    attributes:
+      label: Traffic
+      description: "Lab scenario name, or dataset and file. Traffic must come from a lab you own or a dataset in docs/DATASETS.md."
+    validations: { required: true }
+  - type: textarea
+    id: observed
+    attributes: { label: What the platform said, description: "Layer (L1/L2/L3), the verdict, and the alert's reason text." }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: Ground truth }
+    validations: { required: true }
