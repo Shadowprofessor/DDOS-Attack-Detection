@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.1] — 2026-11-13
+
+### Changed
+- **The AI analyst chat now renders Markdown.** Replies were shown as one raw paragraph, so tables,
+  headings, lists and command blocks collapsed into a wall of text. A small, safe renderer
+  (`dashboard/src/lib/markdown.ts` + `components/Markdown.tsx`) now turns them into real elements:
+  headings, bullet/numbered lists, tables, **bold**, inline `code`, and fenced code blocks for
+  commands.
+  - Built from React elements only — no `dangerouslySetInnerHTML`. Model and telemetry text is
+    escaped by React, so it can never inject HTML (a test renders `<script>`/`<img onerror>` and
+    asserts they stay literal text). The strict CSP and `test_codeql_hardening.py` are unaffected.
+  - The offline rule-based answer now emits clean Markdown sections, and the model is asked to format
+    its replies in Markdown (one-line answer, `##` headings, lists, tables, fenced command blocks).
+- The read-only advisory label and the model name stay on every reply; nothing about the
+  recommend-only, human-approved behaviour changed.
+
+### Repo
+- Untracked local dev/AI scaffolding from version control (kept on disk, gitignored): `.gsd/`,
+  `.agent/`, `.agents/`, `adapters/`, `.gemini/`, `.well-known/`, `.playwright-mcp/`.
 ## [6.1.0] — 2026-11-13
 
 "Make the repo land in 30 seconds."

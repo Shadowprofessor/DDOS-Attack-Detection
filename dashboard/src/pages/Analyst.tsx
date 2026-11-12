@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, ApiError, json, type IncidentDetail, type IncidentPage } from "../api/client";
+import { Markdown } from "../components/Markdown";
 
 interface ChatReply {
   response: string;
@@ -77,7 +78,7 @@ export function AnalystPage() {
             {turns.map((t, i) => (
               <li key={i} className={`turn turn-${t.role}`}>
                 <span className="muted small">{t.role === "you" ? "You" : "Assistant"}{t.meta ? ` · ${t.meta}` : ""}</span>
-                <p>{t.text}</p>
+                {t.role === "assistant" ? <Markdown source={t.text} /> : <p className="turn-text">{t.text}</p>}
               </li>
             ))}
             {turns.length === 0 && <li className="muted">e.g. “What is attacking 10.99.0.10 right now and what should I do?” or “How do I harden the network against SYN floods?”</li>}
