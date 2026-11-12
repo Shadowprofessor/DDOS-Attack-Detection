@@ -122,5 +122,6 @@ test("live updates: a new incident appears without a reload", async ({ page, req
   await expect(page.getByRole("status").filter({ hasText: "Live" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("Live-pushed flood")).toHaveCount(0);
   await request.post("/api/incidents", { headers: { "X-API-Key": ANALYST_KEY }, data: { title: "Live-pushed flood", severity: 3 } });
-  await expect(page.getByText("Live-pushed flood")).toBeVisible({ timeout: 6_000 }); // well under the 15 s poll
+  // the list row (v6.0.0: an alert toast with the same title also appears)
+  await expect(page.getByRole("cell", { name: "Live-pushed flood" })).toBeVisible({ timeout: 6_000 }); // well under the 15 s poll
 });

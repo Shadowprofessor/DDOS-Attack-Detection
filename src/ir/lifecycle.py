@@ -199,7 +199,9 @@ class IncidentService:
             if isinstance(ws, (int, float)) and det >= ws:
                 obs_metrics.INCIDENT_MTTD.observe(det - ws)
             self.refresh_state_gauge()
-        self.publish({"type": "incident.created", "incident": out})
+        hist = (aggregate or {}).get("alert_history") or []
+        reason = str((hist[0] or {}).get("detail") or "")[:300] if hist and isinstance(hist[0], dict) else ""
+        self.publish({"type": "incident.created", "incident": out, "reason": reason})
         return out
 
     def transition(self, incident_id: str, to: str, actor: str, justification: Optional[str] = None) -> dict:
@@ -289,7 +291,9 @@ class IncidentService:
                 "policy_violations": len(result.get("policy_violations") or []),
             })
             s.commit()
-        self.publish({"type": "incident.analysis", "incident_id": incident_id})
+        ex = result.get("explanation") or {}
+        self.publish({"type": "incident.analysis", "incident_id": incident_id, "attack_type": a.get("attack_type"),
+                      "reason": str(ex.get("reason") or a.get("reason") or "")[:300], "source": result.get("source")})
         return self.get(incident_id)
 
     def set_agent_plan(self, incident_id: str, actor: str, plan: dict) -> dict:
