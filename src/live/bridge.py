@@ -264,13 +264,23 @@ class Bridge:
             self.open_incident(ep)
         return opened
 
+    def ml_for_episode(self, ep: dict) -> Optional[dict]:
+        """The latest ML verdict for this victim, but only if its flow ended inside this alert episode.
+        v6.1.0 (live9): the UDP-flood incident used to carry the PREVIOUS flood's 'Syn 0.99' verdict, and
+        Lightning repeated it ("ML classifier label='Syn'") - a cause of the recorded UDP -> "SYN flood" error."""
+        ml = self.ml_latest.get(ep["dst"])
+        start = ep.get("window_start")
+        if not ml or (isinstance(start, (int, float)) and ml.get("flow_end", 0.0) < start - 1.0):
+            return None
+        return {"label": ml["label"], "confidence": ml["confidence"]}
+
     def open_incident(self, ep: dict) -> Optional[str]:
         if not self.open_incidents:
             return None
         dst = ep["dst"]
         sev = 4 if ep.get("status") == "CRITICAL" else 3
         vector = ep.get("vector") or "rate anomaly"
-        agg = aggregate_from_windows(list(self.recent[dst]), incident_id=ep["id"], ml=self.ml_latest.get(dst))
+        agg = aggregate_from_windows(list(self.recent[dst]), incident_id=ep["id"], ml=self.ml_for_episode(ep))
         ex = ep.get("explanation") or {}
         if ex.get("reason"):  # v5.3.0: the live L1 reason travels with the incident (page + PDF)
             agg["alert_history"] = [{"ts": ep["opened_at"], "layer": "L1", "rule": (ex.get("attack_type") or "rate")[:64],
@@ -335,7 +345,8 @@ class Bridge:
                  "ml_label": _clean(ml_raw) if ml_raw else None}
             relay.append(v)
             if v["is_attack"] and basis == "ml":  # only a real ML verdict goes into the aggregate's `ml`
-                self.ml_latest[rec["dst"]] = {"label": v["label"], "confidence": float(r.get("confidence") or 0.0)}
+                self.ml_latest[rec["dst"]] = {"label": v["label"], "confidence": float(r.get("confidence") or 0.0),
+                                              "flow_end": float(rec["end"])}
             self.log("flow_scored", sent_at=t0, ack_at=self.clock(), flow_end=rec["end"], dst=rec["dst"],
                      label=v["label"], is_attack=v["is_attack"], ood=ood, basis=basis, ml_label=v["ml_label"], proposed_action_id=v["proposed_action_id"])
         if relay:

@@ -159,3 +159,26 @@ def test_slow_l3_analysis_runs_in_the_background_and_never_blocks_the_live_loop(
     gate.set()
     b.close()
     assert "incident_analyzed" in kinds()
+
+
+
+def test_incident_never_inherits_the_previous_floods_ml_verdict(tmp_path):
+    """live9: the UDP incident carried the SYN flood's 'Syn 0.99' and Lightning repeated it."""
+    from src.live.bridge import Bridge
+
+    class NoHttp:
+        def get(self, path):
+            return 200, {}
+
+        def post(self, path, body=None):
+            return 200, {}
+
+    b = Bridge(tmp_path, NoHttp(), flows_per_s=0)
+    b.ml_latest["10.99.0.10"] = {"label": "Syn", "confidence": 0.99, "flow_end": 1000.0}  # SYN flood flow
+    udp = {"id": "live-2", "dst": "10.99.0.10", "window_start": 1150.0}  # UDP flood episode, later
+    assert b.ml_for_episode(udp) is None
+    b.ml_latest["10.99.0.10"] = {"label": "UDP", "confidence": 0.97, "flow_end": 1151.5}
+    assert b.ml_for_episode(udp) == {"label": "UDP", "confidence": 0.97}
+    syn = {"id": "live-1", "dst": "10.99.0.10", "window_start": 1000.5}  # within 1 s slack
+    b.ml_latest["10.99.0.10"] = {"label": "Syn", "confidence": 0.99, "flow_end": 1000.0}
+    assert b.ml_for_episode(syn)["label"] == "Syn"
