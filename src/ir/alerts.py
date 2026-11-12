@@ -42,7 +42,7 @@ def clean(text: Optional[str], limit: int = 300) -> str:
     """Telemetry-derived text is untrusted: strip control chars, collapse whitespace, cap length,
     and defuse chat mentions (@everyone, <@id>) before it reaches the UI or a webhook."""
     t = _CTRL.sub(" ", str(text or "")).strip()
-    t = re.sub(r"\s+", " ", t).replace("@", "@​")
+    t = re.sub(r"\s+", " ", t).replace("@", "(at)")
     return t[:limit]
 
 

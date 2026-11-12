@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] — 2026-11-13
+
+Final release of the roadmap. The major version marks the complete demo path: live attack → alert
+→ AI explanation and plan → human-approved containment → measured MTTC.
+
+### Added
+- **SOC alerts** (`src/ir/alerts.py`, `dashboard/src/alerts/`):
+  - in-app toasts on every page, with the reason and numbers, a link to the incident, and the
+    CERT-In "report due by HH:MM UTC (6 h)";
+  - a WebAudio sound cued by severity (3 beeps critical, 2 high, 1 medium);
+  - opt-in browser notifications;
+  - a Settings → Alerts card (toggles, admin *Send test alert*, webhook status, recent alerts).
+- **What raises an alert:** a new live incident; CERT-In 1 h / 15 min / breach warnings; the AI
+  verdict (info, silent); an auto-rollback failure.
+- **Dedupe:** the same alert at most once per 120 s (`DDOS_ALERT_DEDUPE_S`).
+- **Rate limit:** 10 per minute (`DDOS_ALERT_RATE_PER_MIN`). Held-back alerts are counted on the
+  next one. A CERT-In breach is never held back.
+- **Optional webhook:** **off by default**. Set `DDOS_ALERT_WEBHOOK_URL` (https only) for Discord,
+  Slack, Telegram (`DDOS_ALERT_TELEGRAM_CHAT_ID`) or generic JSON.
+  - Only severity ≥ 4 is sent (`DDOS_ALERT_WEBHOOK_MIN_SEVERITY`).
+  - The URL is treated as a secret: never logged and never returned by the API.
+  - Mentions are defused, and alert text is sanitised.
+- **API:** `GET /api/alerts` (analyst) and `POST /api/alerts/test` (admin).
+- **Docs:**
+  - RUNBOOK **H. Live demo**, rewritten: the four-window commands, which key does what, a
+    timeline of what appears on screen, and a clean stop and reset.
+  - `docs/DEMO.md`: a 5-minute script, an "if something breaks" table and an offline fallback.
+  - `REPORT.md`: final numbers at a glance and a final limitations list.
+- **Playwright** `e2e/workflow-v6.spec.ts`:
+  - alert toast with reason, CERT-In deadline and dedupe, linked to the incident's "Why it was
+    flagged";
+  - admin test alert and recent alerts, with no secret on the page;
+  - the demo path: agent plan → propose → admin approves → (mocked) enforcer `applied` → the
+    chart falls to 0 and the L1 alert clears.
+
+### Changed
+- The live demo docs use `python -m uvicorn` (the `uvicorn.exe` shim is often not on PATH).
+- E2E: two locators are scoped to their own row or card, because toasts now repeat incident titles
+  and specs share one server.
+
+### Safety
+- Alerts only notify. An AST test checks that `src/ir/alerts.py` has no mitigation, approve,
+  execute or subprocess path. Every block still needs `PendingActionManager.approve()` by an admin.
+  There is no auto-approve.
+
+### Measured (final, see REPORT.md)
+- **Held-out lab:** 10/10 attacks detected and named; 0 false positives.
+- **Live:** MTTD median 4.89 s (2.66–8.55 s, 7 floods); **MTTC 2.63 s** (live8).
+- **Triage (attack type):** rules 10/10, Lightning 8/10, ML 7/10.
+- **Recorded:** Lightning called the live UDP flood "SYN flood" in 3 of 4 runs.
+
 ## [5.4.0] — 2026-11-13
 
 ### Added

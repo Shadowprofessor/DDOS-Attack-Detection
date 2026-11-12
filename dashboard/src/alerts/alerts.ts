@@ -70,33 +70,28 @@ export function _resetForTests(): void {
   timers.clear();
   seen.clear();
   toasts = [];
+  current = { sound: true, notify: null };
   emit();
 }
 
-// ------------------------------------------------------------------ preferences (per browser)
+// ------------------------------------------------------------------ preferences (this page only)
+// Nothing is kept in browser storage (repo policy: the session lives in an HttpOnly cookie only).
+// Sound defaults to on. Notifications are on once the browser has granted permission (that grant is
+// the opt-in), and can be switched off for this page.
 export interface AlertPrefs {
   sound: boolean;
   notify: boolean;
 }
-const PREFS_KEY = "ddos.alerts.prefs";
+let current: { sound: boolean; notify: boolean | null } = { sound: true, notify: null };
 
 export function prefs(): AlertPrefs {
-  try {
-    const v = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<AlertPrefs>;
-    return { sound: v.sound !== false, notify: v.notify === true };
-  } catch {
-    return { sound: true, notify: false };
-  }
+  const granted = notificationsSupported() && Notification.permission === "granted";
+  return { sound: current.sound, notify: current.notify ?? granted };
 }
 
 export function setPrefs(p: Partial<AlertPrefs>): AlertPrefs {
-  const next = { ...prefs(), ...p };
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(next));
-  } catch {
-    /* private mode: the setting lasts for this page only */
-  }
-  return next;
+  current = { sound: p.sound ?? current.sound, notify: p.notify ?? current.notify };
+  return prefs();
 }
 
 // ------------------------------------------------------------------ sound

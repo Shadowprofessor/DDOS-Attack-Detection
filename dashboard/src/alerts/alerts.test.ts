@@ -6,19 +6,12 @@ const mk = (id: string, level: SocAlert["level"] = "high"): SocAlert => ({
   id, ts: 1, kind: "incident", severity: 4, level, title: `t ${id}`, reason: "r", incident_id: "INC-1", sound: true, suppressed: 0,
 });
 
-let store: Record<string, string>;
 beforeEach(() => {
   _resetForTests();
-  store = {};
-  vi.stubGlobal("localStorage", {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => { store[k] = v; },
-  });
   vi.useFakeTimers();
 });
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
 });
 
 describe("alerts", () => {
@@ -45,7 +38,7 @@ describe("alerts", () => {
     expect([CUES.critical.beeps, CUES.high.beeps, CUES.medium.beeps, CUES.info.beeps]).toEqual([3, 2, 1, 0]);
   });
 
-  it("prefs default to sound on, notifications off, and persist", () => {
+  it("prefs: sound on, notifications off without permission, changeable for this page", () => {
     expect(prefs()).toEqual({ sound: true, notify: false });
     setPrefs({ sound: false });
     expect(prefs()).toEqual({ sound: false, notify: false });

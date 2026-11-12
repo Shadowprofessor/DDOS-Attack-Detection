@@ -32,7 +32,7 @@ function AlertSettings() {
     <div className="card">
       <h2>Alerts</h2>
       <p className="muted small">
-        Toasts appear on every page. Sound: 3 beeps critical, 2 high, 1 medium. These settings are saved in this browser only.
+        Toasts appear on every page. Sound: 3 beeps critical, 2 high, 1 medium. These settings last until you reload the page.
       </p>
       <div className="row">
         <label>

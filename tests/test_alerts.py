@@ -91,7 +91,7 @@ def test_analysis_alert_is_info_without_sound():
 
 
 def test_untrusted_text_is_cleaned():
-    assert clean("hi\x00\x1b[31m @everyone   <@123>") == "hi [31m @​everyone <@​123>"
+    assert clean("hi" + chr(0) + chr(27) + "[31m @everyone   <@123>") == "hi [31m (at)everyone <(at)123>"
     assert len(clean("x" * 999)) == 300
 
 
