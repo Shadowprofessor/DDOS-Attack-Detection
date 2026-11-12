@@ -535,6 +535,14 @@ from src.api.live_router import router as live_router  # noqa: E402  v5.2.0 live
 
 app.include_router(live_router)
 
+from src.api.lab_router import router as lab_router  # noqa: E402  v5.4.0 lab enforcer hand-off
+
+app.include_router(lab_router)
+
+from src.api.agent_router import router as agent_router  # noqa: E402  v5.4.0 agentic analyst
+
+app.include_router(agent_router)
+
 from src.api.session_router import router as session_router  # noqa: E402  v4.3.0 SOC web app
 from src.web import app_server as _soc_app  # noqa: E402
 

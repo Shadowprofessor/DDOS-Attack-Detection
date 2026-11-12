@@ -226,6 +226,24 @@ export function LiveAttackPage() {
         )}
       </div>
 
+      <div className="card">
+        <h2>Lab containment (human-approved)</h2>
+        {model.enforcement.length === 0 ? (
+          <p className="muted small">No containment yet. Rules appear here only after an admin approves a proposal on Approvals and the lab enforcer applies it.</p>
+        ) : (
+          <ul className="timeline">
+            {model.enforcement.map((e, i) => (
+              <li key={`${e.action_id}-${e.state}-${i}`}>
+                <span className={`chip ${e.state === "applied" ? "ok" : e.state === "refused" || e.state === "failed" ? "warn" : ""}`}>{e.state}</span>
+                <span className="mono">{e.action_type} {e.target}</span>
+                <span className="muted small">{e.action_id}{e.approved_at && e.ts ? ` · ${Math.max(0, e.ts - e.approved_at).toFixed(1)} s after approval` : ""}</span>
+                <span className="reason small">{e.detail}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {model.episodes.length > 0 && (
         <div className="card">
           <h2>Alert history</h2>

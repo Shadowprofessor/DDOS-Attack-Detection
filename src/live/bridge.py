@@ -160,6 +160,12 @@ class Bridge:
             self.ovs_offset = self.ovs_path.stat().st_size
         self.log_path = Path(log_path) if log_path else self.run_dir / "live_bridge.jsonl"
         self.stats = defaultdict(int)
+        # v5.4.0 lab enforcement relay (platform queue -> file for the WSL2 enforcer -> reports back)
+        self.enforce_queue_path = self.run_dir / "enforce_queue.jsonl"
+        self.enforce_status_path, self.enforce_status_offset = self.run_dir / "enforce_status.jsonl", 0
+        if not from_start and self.enforce_status_path.exists():
+            self.enforce_status_offset = self.enforce_status_path.stat().st_size
+        self._relayed: set = set()
         self._last_tick = None
 
     def log(self, event: str, **kw) -> None:
@@ -232,6 +238,9 @@ class Bridge:
                      late_packets=self.agg.late_packets)
             for w in batch:
                 self.recent[w["dst"]].append(w)
+                if w["packets"] or w["dst"] in self.recent:  # compact per-window record: MTTC needs the rate after approval
+                    self.log("victim_window", dst=w["dst"], start=w["start"], end=w["end"], pps=w["pps"],
+                             slow_conns=w.get("slow_conns", 0))
             if status == 200:
                 for ep in body.get("alerts_opened", []):
                     self.log("alert", episode=ep, ack_at=t1)
@@ -334,6 +343,49 @@ class Bridge:
             n += 1
         return n
 
+    def _tail_jsonl(self, path: Path, offset: int) -> tuple:
+        if not path.exists():
+            return [], offset
+        with path.open("rb") as fh:
+            fh.seek(offset)
+            chunk = fh.read()
+        end = chunk.rfind(b"\n")
+        if end < 0:
+            return [], offset
+        out = []
+        for line in chunk[:end].splitlines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+        return out, offset + end + 1
+
+    def relay_enforcement(self) -> int:
+        """Approved lab actions -> enforce_queue.jsonl (for the enforcer); its reports -> the platform.
+        Only what an admin approved is ever in the platform's queue; this just carries it."""
+        n = 0
+        getter = getattr(self.http, "get", None)
+        if getter is not None:
+            status, body = getter("/api/lab/enforcement/queue")
+            if status == 200:
+                for e in body.get("queue", []):
+                    key = (e.get("action_id"), e.get("op"))
+                    if key in self._relayed:
+                        continue
+                    self._relayed.add(key)
+                    with self.enforce_queue_path.open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(e) + "\n")
+                    self.log("enforcement_queued", action_id=e.get("action_id"), op=e.get("op"), target=e.get("target"),
+                             approved_at=e.get("approved_at"))
+                    n += 1
+        reports, self.enforce_status_offset = self._tail_jsonl(self.enforce_status_path, self.enforce_status_offset)
+        for r in reports:
+            body = {k: r[k] for k in ("action_id", "state", "detail", "ts") if k in r}
+            status, _ = self.http.post("/api/lab/enforcement/report", body)
+            self.log("enforcement_reported", status=status, **body)
+            n += 1
+        return n
+
     def tick(self) -> dict:
         now = self.clock()
         dt = 1.0 if self._last_tick is None else max(0.0, now - self._last_tick)
@@ -342,7 +394,8 @@ class Bridge:
         opened = self.push_windows()
         scored = self.score_flows(dt)
         ovs = self.push_ovs()
-        return {"packets": pk, "alerts": len(opened), "flows_scored": scored, "ovs": ovs}
+        enforcement = self.relay_enforcement()
+        return {"packets": pk, "alerts": len(opened), "flows_scored": scored, "ovs": ovs, "enforcement": enforcement}
 
     def run(self, tick_s: float = 0.5, duration_s: Optional[float] = None) -> None:  # pragma: no cover - loop
         end = None if duration_s is None else self.clock() + duration_s

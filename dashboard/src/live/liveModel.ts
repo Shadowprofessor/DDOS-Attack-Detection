@@ -27,7 +27,12 @@ export interface LiveSnapshot {
   server_time: number; victims: Record<string, LiveWindow[]>; open_alerts: Episode[]; episodes: Episode[];
   flows: LiveFlow[]; ovs: OvsRate[];
 }
+export interface Enforcement {
+  action_id: string; state: string; target: string | null; action_type: string | null; victim_ip: string | null;
+  ts: number | null; detail: string; approved_at: number | null;
+}
 export interface LiveModel {
+  enforcement: Enforcement[];
   // Keyed by server-supplied strings: Maps (never plain objects) so a key like "__proto__" cannot
   // pollute a prototype, and keys must match a strict format before they are stored.
   victims: Map<string, LiveWindow[]>; open: Map<string, Episode>; episodes: Episode[];
@@ -38,7 +43,7 @@ export const KEEP_WINDOWS = 180;
 const KEEP_EPISODES = 30;
 const KEEP_FLOWS = 50;
 
-export const empty = (): LiveModel => ({ victims: new Map(), open: new Map(), episodes: [], flows: [], ovs: new Map() });
+export const empty = (): LiveModel => ({ victims: new Map(), open: new Map(), episodes: [], flows: [], ovs: new Map(), enforcement: [] });
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 const PORT_KEY = /^[A-Za-z0-9_-]{1,32}\/[A-Za-z0-9_-]{1,16}$/;
@@ -56,7 +61,7 @@ export function fromSnapshot(s: LiveSnapshot): LiveModel {
     const k = ovsKey(r);
     if (k) m.ovs.set(k, r);
   }
-  return { ...m, episodes: s.episodes ?? [], flows: s.flows ?? [] };
+  return { ...m, episodes: s.episodes ?? [], flows: s.flows ?? [], enforcement: m.enforcement };
 }
 
 type Ev = { type: string; [k: string]: unknown };
@@ -95,6 +100,8 @@ export function applyEvent(m: LiveModel, ev: Ev): LiveModel {
       }
       return { ...m, ovs };
     }
+    case "live.enforcement":  // v5.4.0: what the lab enforcer did with an APPROVED action
+      return { ...m, enforcement: [ev as unknown as Enforcement, ...m.enforcement].slice(0, 30) };
     case "live.reset":
       return empty();
     default:

@@ -108,6 +108,13 @@ class IncidentService:
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ helpers
+    def live_manager(self):
+        """The real (non-replay) mitigation queue this service links actions to."""
+        if self._manager_factory:
+            return self._manager_factory()
+        from src.mitigation.manager import get_manager
+        return get_manager()
+
     def manager_for(self, inc: Incident):
         """Replay incidents get an isolated dry-run manager; never the real queue."""
         if inc.is_replay:
@@ -274,11 +281,28 @@ class IncidentService:
         a = result.get("analysis") or {}
         with self._lock, self.db.session() as s:
             inc = self._load(s, incident_id)
-            inc.analysis_json = result
+            prev_agent = (inc.analysis_json or {}).get("agent")
+            inc.analysis_json = {**result, "agent": prev_agent} if prev_agent and "agent" not in result else result
             self._append(s, inc, actor, "analysis", {
                 "source": result.get("source"), "degraded": bool(result.get("degraded")),
                 "attack_type": a.get("attack_type"), "severity_suggested": a.get("severity"),
                 "policy_violations": len(result.get("policy_violations") or []),
+            })
+            s.commit()
+        self.publish({"type": "incident.analysis", "incident_id": incident_id})
+        return self.get(incident_id)
+
+    def set_agent_plan(self, incident_id: str, actor: str, plan: dict) -> dict:
+        """v5.4.0: store the agentic analyst's containment PLAN next to the analysis (a recommendation;
+        nothing is proposed or executed by storing it)."""
+        with self._lock, self.db.session() as s:
+            inc = self._load(s, incident_id)
+            merged = dict(inc.analysis_json or {})
+            merged["agent"] = plan
+            inc.analysis_json = merged
+            self._append(s, inc, actor, "agent_plan", {
+                "source": plan.get("source"), "attack_type": plan.get("attack_type"),
+                "steps": len(plan.get("plan") or []), "policy_violations": len(plan.get("policy_violations") or []),
             })
             s.commit()
         self.publish({"type": "incident.analysis", "incident_id": incident_id})

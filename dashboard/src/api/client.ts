@@ -142,9 +142,36 @@ export interface Explanation {
   evidence?: string[];
 }
 
+export interface PlanStep {
+  rank: number;
+  action: "LAB_OVS_DROP" | "LAB_OVS_PORT_DROP" | "RATE_LIMIT_ADVICE" | "MONITOR" | "ESCALATE_UPSTREAM";
+  target: string;
+  blast_radius: "low" | "medium" | "high";
+  reversible: boolean;
+  ttl_s: number;
+  rationale: string;
+}
+
+export interface AgentPlan {
+  attack_type: string;
+  evidence: string[];
+  reason: string;
+  confidence: number;
+  false_positive_assessment: string;
+  mitre_ids: string[];
+  plan: PlanStep[];
+  source: string;
+  degraded_reason?: string;
+  policy_violations: string[];
+  tool_trace: { tool: string; ok?: boolean }[];
+  latency_ms?: number;
+}
+
 export interface AnalysisResult {
   explanation?: Explanation | null;
-  analysis: {
+  agent?: AgentPlan | null;
+  /** absent when only an agent plan has been stored (v5.4.0) */
+  analysis?: {
     attack_type: string;
     mitre_ids: string[];
     severity: number;
