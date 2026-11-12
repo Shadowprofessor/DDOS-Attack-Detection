@@ -19,6 +19,7 @@ from typing import Callable, Deque, Dict, List, Optional
 from src.features.threshold_detector import RateThresholdDetector
 
 HISTORY_WINDOWS = 300   # per victim (5 min at 1 s)
+SLOW_CONN_THRESHOLD = 20  # same as LowSlowConfig.concurrent_threshold
 MAX_VICTIMS = 64
 RECENT_EPISODES = 50
 RECENT_FLOWS = 200
@@ -42,6 +43,9 @@ class LiveState:
                  detector: Optional[RateThresholdDetector] = None):
         self.clock, self.clear_after = clock, clear_after
         self.l1 = detector or RateThresholdDetector()
+        from src.features.anomaly_detector import PerDestinationBaseline
+
+        self.baselines = PerDestinationBaseline(warmup=20)  # per-victim adaptive baseline (EWMA)
         self._lock = threading.Lock()
         self.windows: Dict[str, Deque[dict]] = {}
         self.open: Dict[str, dict] = {}          # dst -> active episode
@@ -60,6 +64,23 @@ class LiveState:
                                    dst_ip=w["dst"])
         l1 = {"status": r.status, "violation": r.is_violation, "rules": r.triggered_rules[:4],
               "vector": r.vector_inference}
+        slow = int(w.get("slow_conns") or 0)
+        # v5.3.0 flash-crowd guard: a WARNING-level surge (CRITICAL never) is suppressed when the traffic looks
+        # like real users (TCP conversations carrying data) or is normal for THIS destination's adaptive baseline.
+        base = self.baselines.evaluate(w["dst"], w["pps"], w["bps"]) if self.baselines else None
+        mix, flags = w.get("proto_mix") or {}, w.get("tcp_flags") or {}
+        payload = w.get("tcp_payload")
+        users = (mix.get("tcp", 0) >= 0.6 and payload is not None and payload >= 0.10 and flags.get("syn", 0) <= 0.30)
+        normal_here = bool(base and not base["learning"] and not base["is_anomaly"])
+        if l1["status"] == "WARNING" and (users or normal_here):
+            why = "looks like real users (TCP with data)" if users else                 f"normal for this destination (baseline {base['baseline_metrics']['mean_pps']:.0f} pps)"
+            l1.update(violation=False, status="WATCH", rules=[f"WATCH (not alerted): {why}"] + l1["rules"][:3])
+        l1["baseline"] = base["baseline_metrics"] if base else None
+        if slow >= SLOW_CONN_THRESHOLD:  # v5.3.0: the L1 low-and-slow rule on live connection state
+            l1.update(violation=True, status="CRITICAL" if l1["status"] == "CRITICAL" else "WARNING",
+                      vector=l1["vector"] or "Low-and-slow (L7)",
+                      rules=[f"WARNING: {slow} established HTTP connections open >= 10 s at <= 50 B/s "
+                             f">= {SLOW_CONN_THRESHOLD}"] + l1["rules"][:3])
         hint = traffic_hint(w)
         row = {**w, "sensor": sensor, "received_at": now, "l1": l1, "hint": hint}
         events = [{"type": "live.window", "window": row}]
@@ -72,23 +93,23 @@ class LiveState:
                 self.windows[dst] = deque(maxlen=HISTORY_WINDOWS)
             self.windows[dst].append(row)
             ep = self.open.get(dst)
-            if r.is_violation:
+            if l1["violation"]:
                 self._normal_run[dst] = 0
                 if ep is None:
                     self._seq += 1
                     ep = {"id": f"live-{self._seq}", "dst": dst, "opened_at": now, "window_start": w["start"],
-                          "status": r.status, "vector": r.vector_inference, "rules": l1["rules"], "hint": hint,
+                          "status": l1["status"], "vector": l1["vector"], "rules": l1["rules"], "hint": hint,
                           "peak_pps": w["pps"], "peak_bps": w["bps"], "top_talkers": w.get("top_talkers", [])[:5],
-                          "closed_at": None, "sensor": sensor}
+                          "closed_at": None, "sensor": sensor, "explanation": self._explain(row)}
                     self.open[dst] = ep
                     self.episodes.appendleft(ep)
                     events.append({"type": "live.alert", "episode": dict(ep)})
                 else:
-                    if r.status == "CRITICAL":
+                    if l1["status"] == "CRITICAL":
                         ep["status"] = "CRITICAL"
                     if w["pps"] > ep["peak_pps"]:
                         ep.update(peak_pps=w["pps"], peak_bps=w["bps"], top_talkers=w.get("top_talkers", [])[:5],
-                                  hint=hint, vector=r.vector_inference or ep["vector"])
+                                  hint=hint, vector=r.vector_inference or ep["vector"], explanation=self._explain(row))
             elif ep is not None:
                 self._normal_run[dst] = self._normal_run.get(dst, 0) + 1
                 if self._normal_run[dst] >= self.clear_after:
@@ -96,6 +117,14 @@ class LiveState:
                     del self.open[dst]
                     events.append({"type": "live.clear", "episode": dict(ep)})
         return events
+
+    def _explain(self, row: dict) -> Optional[dict]:
+        try:
+            from src.agent.explain import explain_l1_window
+
+            return explain_l1_window(row, row["l1"], self.l1.crit_pps, self.l1.warn_pps).model_dump()
+        except Exception:  # never let an explanation break the live path
+            return None
 
     # ------------------------------------------------------------------ flows (ML verdicts relayed by the sensor)
     def ingest_flow(self, f: dict, sensor: str) -> dict:
@@ -148,3 +177,6 @@ class LiveState:
             self.flows.clear()
             self.ovs_prev.clear()
             self.ovs_latest.clear()
+            from src.features.anomaly_detector import PerDestinationBaseline
+
+            self.baselines = PerDestinationBaseline(warmup=20)

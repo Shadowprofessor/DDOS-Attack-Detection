@@ -106,32 +106,78 @@ def rule_based_analysis(agg: IncidentAggregate) -> IncidentAnalysis:
         evidence.append(f"ML classifier: {ml_label} (confidence {ml_conf:.2f}).")
 
     mitre: List[str] = []
-    if agg.l7 and agg.l7.slow_connections >= 20:
+    victim = agg.dst_ips[0] if agg.dst_ips else "the victim"
+    n_dst = len(set(agg.dst_ips))
+    srcs = f"{agg.unique_src_ips} source{'s' if agg.unique_src_ips != 1 else ''} -> {n_dst or 1} victim{'s' if n_dst > 1 else ''}"
+    rate = f"{agg.pps:,.0f} pps to {victim}"
+    tf = agg.tcp_flows
+    sport_share = {p.key: p.share for p in agg.src_ports}
+    refl_src = sorted((k for k in sport_share if k in REFLECTOR_PORTS and sport_share[k] >= 0.5), key=lambda k: -sport_share[k])
+    payload = agg.tcp_payload_share  # live windows (packet level); None offline
+    tcp = proto.get("tcp", 0)
+    # v5.3.0 rule ladder. Thresholds were set on DEV runs 2+3 only (docs/purple_team/README.md, v5.3.0);
+    # each signal sits far from what benign / flash-crowd traffic showed there (0 % for the TCP-state signals).
+    if agg.land_share >= 0.5:
+        attack, mitre = "LAND attack (source IP equals destination IP)", ["T1499"]
+        reason = f"{agg.land_share:.0%} of packets have source IP == destination IP ({victim}): always spoofed; {rate}"
+    elif agg.l7 and agg.l7.slow_connections >= 20:
         attack, mitre = "Slowloris / low-and-slow HTTP (L7)", ["T1499.002"]
-        evidence.append(f"{agg.l7.slow_connections} concurrent starved HTTP connections.")
+        reason = (f"{agg.l7.slow_connections} established HTTP connections to {victim} open >= 10 s while the "
+                  f"client sends <= 50 B/s; {srcs}")
     elif agg.l7 and agg.l7.http_rps >= 500:
         attack, mitre = "HTTP flood (L7)", ["T1499.002"]
-        evidence.append(f"HTTP request rate {agg.l7.http_rps:,.0f} rps.")
-    elif len(set(agg.dst_ips)) >= 8:
-        attack, mitre = f"Carpet-bombing across {len(set(agg.dst_ips))} destinations", ["T1498"]
-        evidence.append("Traffic spread over many destination IPs in the target range.")
-    elif flags.get("syn", 0) >= 0.7 and proto.get("tcp", 0) >= 0.6:
+        reason = f"HTTP request rate {agg.l7.http_rps:,.0f} rps to {victim}; {srcs}"
+    elif n_dst >= 8:
+        attack, mitre = f"Carpet-bombing across {n_dst} destinations", ["T1498"]
+        reason = f"traffic spread over {n_dst} destination IPs in one range at {agg.pps:,.0f} pps; {agg.unique_src_ips} sources"
+    elif tcp >= 0.6 and tf and tf.half_open_share >= 0.8 and tf.half_open_per_s >= 20:
         attack, mitre = "TCP SYN flood", ["T1499.001", "T1498.001"]
-        evidence.append(f"SYN ratio {flags['syn']:.2f} of TCP packets.")
+        reason = (f"{tf.half_open_share:.0%} of {tf.tcp_flows:,} TCP connections to {victim} are half-open "
+                  f"(SYN, no client data; {tf.half_open_per_s:,.0f}/s); {rate}; {srcs}")
+    elif (tcp >= 0.6 and flags.get("syn", 0) >= 0.3 and payload is not None and payload < 0.05 and agg.pps >= 100)             or (tcp >= 0.6 and flags.get("syn", 0) >= 0.7):
+        attack, mitre = "TCP SYN flood", ["T1499.001", "T1498.001"]
+        reason = (f"SYN is {flags.get('syn', 0):.0%} of TCP packets to {victim}"
+                  + (f" and only {payload:.0%} carry data (handshakes never completed)" if payload is not None else "")
+                  + f"; {rate}; {srcs}")
+    elif tcp >= 0.6 and ((tf and tf.bare_ack_share >= 0.8) or
+                         (flags.get("ack_only", 0) >= 0.7 and payload is not None and payload < 0.05)) and agg.pps >= 100:
+        share = tf.bare_ack_share if tf and tf.bare_ack_share >= 0.8 else flags.get("ack_only", 0)
+        attack, mitre = "TCP ACK flood", ["T1498.001"]
+        reason = f"{share:.0%} of TCP to {victim} is bare ACKs (no SYN, no data, no connection); {rate}; {srcs}"
+    elif tcp >= 0.6 and ((tf and tf.bare_rst_share >= 0.8) or
+                         (flags.get("rst", 0) >= 0.7 and flags.get("syn", 0) < 0.1)) and agg.pps >= 100:
+        share = tf.bare_rst_share if tf and tf.bare_rst_share >= 0.8 else flags.get("rst", 0)
+        attack, mitre = "TCP RST flood", ["T1498.001"]
+        reason = f"{share:.0%} of TCP to {victim} is bare RSTs (no SYN/ACK, no data); {rate}; {srcs}"
+    elif proto.get("udp", 0) >= 0.6 and "53" in refl_src:
+        attack, mitre = "DNS reflection-amplification", ["T1498.002"]
+        reason = (f"UDP {proto['udp']:.0%} of packets; {sport_share['53']:.0%} come FROM source port 53 (DNS "
+                  f"responses nobody asked for); {rate}; {srcs}")
+    elif proto.get("udp", 0) >= 0.6 and refl_src:
+        names = ", ".join(REFLECTOR_PORTS[k] for k in refl_src)
+        attack, mitre = f"UDP reflection-amplification ({names})", ["T1498.002"]
+        reason = f"UDP {proto['udp']:.0%} of packets, arriving FROM reflector source port(s) {', '.join(refl_src)} ({names}); {rate}; {srcs}"
     elif proto.get("udp", 0) >= 0.6 and ports & set(REFLECTOR_PORTS):
         refl = ", ".join(REFLECTOR_PORTS[p] for p in sorted(ports & set(REFLECTOR_PORTS)))
         attack, mitre = f"UDP reflection-amplification ({refl})", ["T1498.002"]
-        evidence.append(f"UDP-dominated ({proto['udp']:.0%}) traffic from reflector ports: {refl}.")
+        reason = f"UDP {proto['udp']:.0%} of packets to reflector destination port(s) ({refl}); {rate}; {srcs}"
     elif proto.get("udp", 0) >= 0.6:
         attack, mitre = "UDP flood", ["T1498.001"]
-        evidence.append(f"UDP share {proto['udp']:.0%}.")
+        reason = f"UDP {proto['udp']:.0%} of packets; {rate}; {srcs}"
     elif proto.get("icmp", 0) >= 0.5:
         attack, mitre = "ICMP flood", ["T1498.001"]
-        evidence.append(f"ICMP share {proto['icmp']:.0%}.")
+        reason = f"ICMP {proto['icmp']:.0%} of packets; {rate}; {srcs}"
+    elif agg.pps >= 500 and max(proto.values() or [1.0]) < 0.6:
+        mix = ", ".join(f"{k.upper()} {v:.0%}" for k, v in sorted(proto.items(), key=lambda kv: -kv[1]))
+        attack, mitre = "Unclassified multi-protocol flood (possible zero-day / novel)", ["T1498"]
+        reason = f"{rate} with no dominant protocol ({mix}); matches no known flood pattern; {srcs}"
     elif not ml_benign and agg.ml:
         attack, mitre = f"{ml_label} (per ML classifier)", ["T1498"]
+        reason = f"no rule matched; the ML classifier says {ml_label} (confidence {ml_conf:.2f}); {rate}"
     else:
         attack = "Benign / insufficient evidence"
+        reason = f"no flood signature: {rate}; {srcs}"
+    evidence.append(reason[0].upper() + reason[1:] + ".")
 
     benign = attack.startswith("Benign")
     pps = agg.pps
@@ -170,6 +216,7 @@ def rule_based_analysis(agg: IncidentAggregate) -> IncidentAnalysis:
                       "Compare against the baseline for this hour of day"],
         report_summary=(f"Deterministic rule-based assessment: {attack} at severity {severity}/5 "
                         f"(confidence {confidence:.2f}). Generated without the LLM; review before acting."),
+        reason=f"L3 rules: {reason}" + (f"; {', '.join(mitre)}" if mitre else ""),
     )
 
 
@@ -328,6 +375,12 @@ class ThreatAnalyst:
             if result is None:
                 result = self._rules(agg, "all_models_unavailable:" + ";".join(reasons), suspicious, t0)
 
+        try:  # v5.3.0: detected_by / attack type / confidence / MITRE / reason, built by our code
+            from src.agent.explain import explain_analysis
+
+            result = result.model_copy(update={"explanation": explain_analysis(result, agg)})
+        except Exception as e:  # an explanation must never break the analysis
+            logger.warning("explanation failed: %s", type(e).__name__)
         ttl = self.cache_ttl_s if self.cache_ttl_s is not None else agg.window_seconds
         with self._lock:
             self._cache[key] = (now + ttl, result)

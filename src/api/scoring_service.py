@@ -391,6 +391,7 @@ def _lowslow_observe(feat: dict, src_ip: str, dst_ip: str) -> Optional[dict]:
                 feat.get("Fwd Packets Length Total", feat.get("Total Length of Fwd Packets", 0.0)) or 0.0
             ),
             "header_complete": feat.get("header_complete", True),
+            "bwd_packets": feat.get("Total Backward Packets"),
         }
         alert = _LOWSLOW.observe(summary)
         if alert:
@@ -491,6 +492,8 @@ class FlowResponse(BaseModel):
     ood: Optional[dict] = None
     # Layer-7 low-and-slow (Slowloris/RUDY) alert for the target, when concurrency crosses threshold.
     low_slow: Optional[dict] = None
+    # v5.3.0: detected_by / attack_type / confidence / MITRE / reason for an attack verdict (None if benign)
+    explanation: Optional[dict] = None
 
 class BatchResponse(BaseModel):
     results: list[ScoringResult]
@@ -1075,11 +1078,17 @@ async def score_flow(
             "degradation_reason": deg_reason,
         })
 
+        from src.agent.explain import explain_score
+
+        basis = "multi_layer" if "MULTI_LAYER" in str((breakdown or {}).get("consensus_tier") or "") else "ml"
+        expl = explain_score(result.is_attack, str(result.attack_family or label), result.confidence, basis,
+                             h6=h6_result.to_dict(), h9=h9_result, dst=victim_ip)
         return FlowResponse(
             result=result,
             model_version="ensemble-rf-xgb-bilstm-v1",
             ood=_ood_assessment(confidence, body.features, label),
             low_slow=_lowslow_observe(feat, attacker_ip, victim_ip),
+            explanation=expl.model_dump() if expl else None,
         )
 
 @app.post("/score/batch", response_model=BatchResponse)

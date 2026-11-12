@@ -70,6 +70,9 @@ def aggregate_from_windows(windows: List[dict], incident_id: str, ml: Optional[d
     pk = sum(w["packets"] for w in ws) or 1
     talkers: Dict[str, int] = defaultdict(int)
     ports: Dict[str, int] = defaultdict(int)
+    sports: Dict[str, int] = defaultdict(int)
+    land = 0
+    payload_num, payload_den = 0.0, 0.0
     proto: Dict[str, float] = defaultdict(float)
     flags: Dict[str, float] = defaultdict(float)
     for w in ws:
@@ -77,6 +80,13 @@ def aggregate_from_windows(windows: List[dict], incident_id: str, ml: Optional[d
             talkers[t["ip"]] += t["packets"]
         for p in w.get("top_dst_ports", []):
             ports[str(p["port"])] += p["packets"]
+        for p in w.get("top_src_ports", []):
+            sports[str(p["port"])] += p["packets"]
+        land += w.get("land", 0) or 0
+        if w.get("tcp_payload") is not None:
+            tcp_n = (w.get("proto_mix") or {}).get("tcp", 0.0) * w["packets"]
+            payload_num += w["tcp_payload"] * tcp_n
+            payload_den += tcp_n
         for k, v in (w.get("proto_mix") or {}).items():
             proto[k] += v * w["packets"]
         tcp_pk = (w.get("proto_mix") or {}).get("tcp", 0.0) * w["packets"]
@@ -98,7 +108,14 @@ def aggregate_from_windows(windows: List[dict], incident_id: str, ml: Optional[d
         "tcp_flag_ratios": {k: round(min(1.0, v / tcp_total), 4) for k, v in flags.items()},
         "packet_size_p50": ws[-1].get("pkt_size", {}).get("p50", 0.0),
         "packet_size_p95": max(w.get("pkt_size", {}).get("p95", 0.0) for w in ws),
+        "src_ports": [{"key": p, "share": round(min(1.0, c / pk), 4)}
+                      for p, c in sorted(sports.items(), key=lambda kv: -kv[1])[:10]],
+        "land_share": round(min(1.0, land / pk), 4),
+        "tcp_payload_share": round(payload_num / payload_den, 4) if payload_den else None,
     }
+    slow = max((w.get("slow_conns") or 0) for w in ws)
+    if slow:
+        agg["l7"] = {"http_rps": 0.0, "slow_connections": int(slow)}
     if ml:
         agg["ml"] = ml
     return agg
@@ -199,6 +216,10 @@ class Bridge:
     # ------------------------------------------------------------------ outputs
     def push_windows(self) -> List[dict]:
         ws = [w for w in self.agg.emit() if self.victims is None or w["dst"] in self.victims]
+        if ws:  # v5.3.0: low-and-slow needs connection state, which packet windows do not have
+            slow = self.flows.slow_counts(self.agg.now())
+            for w in ws:
+                w["slow_conns"] = slow.get(w["dst"], 0)
         opened: List[dict] = []
         for i in range(0, len(ws), 200):
             batch = ws[i:i + 200]
@@ -228,6 +249,10 @@ class Bridge:
         sev = 4 if ep.get("status") == "CRITICAL" else 3
         vector = ep.get("vector") or "rate anomaly"
         agg = aggregate_from_windows(list(self.recent[dst]), incident_id=ep["id"], ml=self.ml_latest.get(dst))
+        ex = ep.get("explanation") or {}
+        if ex.get("reason"):  # v5.3.0: the live L1 reason travels with the incident (page + PDF)
+            agg["alert_history"] = [{"ts": ep["opened_at"], "layer": "L1", "rule": (ex.get("attack_type") or "rate")[:64],
+                                     "detail": ex["reason"][:300]}]
         body = {"title": f"[LIVE] L1 {vector} toward {dst} ({ep.get('hint', '')})"[:200], "severity": sev,
                 "aggregate": agg, "detected_at": ep["opened_at"], "source_alert_ids": [ep["id"]]}
         t0 = self.clock()
@@ -266,7 +291,8 @@ class Bridge:
             rec = with_features(self.candidates.pop())  # newest first: what is happening now
             self.flow_budget -= 1.0
             feats = {k: _num(v) for k, v in rec["features"].items()}
-            feats.update({"src_ip": rec["src"], "dst_ip": rec["dst"]})
+            feats.update({"src_ip": rec["src"], "dst_ip": rec["dst"],  # v5.3.0: CICFlowMeter features carry no ports
+                          "Source Port": rec["sport"], "Destination Port": rec["dport"]})
             t0 = self.clock()
             status, body = self.http.post("/score/flow", {"features": feats})
             sent += 1

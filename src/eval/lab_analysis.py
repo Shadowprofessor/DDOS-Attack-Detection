@@ -18,6 +18,7 @@ active timeout on top (60 s / 120 s by default), and this is reported next to th
 from __future__ import annotations
 
 import json
+import os
 import math
 from collections import Counter
 from pathlib import Path
@@ -34,6 +35,14 @@ FlowScorer = Callable[[Dict, str, str, float], Dict]
 def _entropy(counts: Counter) -> float:
     n = sum(counts.values())
     return -sum((c / n) * math.log2(c / n) for c in counts.values() if c) if n else 0.0
+
+
+def _feat(f: dict, name: str) -> float:
+    v = (f.get("features") or {}).get(name, 0.0)
+    try:
+        return float(v or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def build_aggregate(sid: str, flows: List[dict], t0: float, window_s: float) -> dict:
@@ -55,9 +64,33 @@ def build_aggregate(sid: str, flows: List[dict], t0: float, window_s: float) -> 
     # An HTTP request needs client payload: bare handshakes to 80/443 (a SYN flood) are not HTTP (v5.1.0).
     http = [f for f in flows if f["dport"] in (80, 443) and f.get("fwd_bytes", f["bytes"]) > 0]
     slow = [f for f in http if (f["end"] - f["start"]) >= 10.0
+            and _feat(f, "Total Backward Packets") > 0  # v5.3.0: handshake completed (server answered)
             and f.get("fwd_bytes", f["bytes"]) / max(1e-6, f["end"] - f["start"]) <= 50.0]  # LowSlowDetector rule
     l7 = {"http_rps": round(len(http) / w, 3), "slow_connections": len(slow)} if http else None
+    # v5.3.0 evidence for the L3 rules: what happened to each TCP connection, source ports, LAND packets
+    tcp = [f for f in flows if f["proto"] == 6]
+    nt = len(tcp) or 1
+    payload = lambda f: f.get("fwd_bytes", f["bytes"]) > 0  # noqa: E731
+    half_open = [f for f in tcp if _feat(f, "SYN Flag Count") > 0 and not payload(f)]
+    tcp_flows = {
+        "tcp_flows": len(tcp),
+        "half_open_share": round(len(half_open) / nt, 4),
+        "bare_ack_share": round(sum(1 for f in tcp if _feat(f, "SYN Flag Count") == 0 and _feat(f, "ACK Flag Count") > 0
+                                    and not payload(f)) / nt, 4),
+        "bare_rst_share": round(sum(1 for f in tcp if _feat(f, "RST Flag Count") > 0 and _feat(f, "SYN Flag Count") == 0
+                                    and _feat(f, "ACK Flag Count") == 0 and not payload(f)) / nt, 4),
+        "completed_share": round(sum(1 for f in tcp if _feat(f, "SYN Flag Count") > 0 and payload(f)
+                                     and _feat(f, "Total Backward Packets") > 0) / nt, 4),
+        "half_open_per_s": round(len(half_open) / w, 3),
+    } if tcp else None
+    sports = Counter()
+    for f in flows:
+        if f.get("sport"):
+            sports[str(f["sport"])] += f["packets"]
+    land = sum(f["packets"] for f in flows if f["src"] == f["dst"])
     return {
+        "src_ports": [{"key": k, "share": round(v / pk, 4)} for k, v in sports.most_common(10)],
+        "tcp_flows": tcp_flows, "land_share": round(land / pk, 4),
         "incident_id": f"lab-{sid}", "window_start": t0, "window_seconds": int(min(3600, max(1, w))), "l7": l7,
         "pps": pk / w, "bps": sum(f["bytes"] for f in flows) * 8 / w, "flow_count": len(flows),
         "unique_src_ips": len(by_src), "src_ip_entropy": round(_entropy(by_src), 3),
@@ -88,7 +121,8 @@ def analyse_run(run: dict, expected: dict, flows: List[dict], scorer: FlowScorer
     for i, f in enumerate(sorted(flows, key=lambda x: x["end"])):
         take_ml = i % every == 0
         ml_scored += take_ml
-        r = scorer(f["features"], f["src"], f["dst"], f["end"], **({} if take_ml else {"ml": False}))
+        feats = {**f["features"], "Source Port": f.get("sport"), "Destination Port": f.get("dport")}  # v5.3.0: real ports
+        r = scorer(feats, f["src"], f["dst"], f["end"], **({} if take_ml else {"ml": False}))
         labels[r.get("label", "?")] += 1
         any_hit = False
         for layer in ("L1", "L2", "OOD"):
@@ -167,7 +201,7 @@ def flows_from_pcap(pcap: Path) -> List[dict]:  # pragma: no cover - needs scapy
 
 def real_scorer() -> FlowScorer:  # pragma: no cover - needs model artifacts
     from src.features.signature_filter import SignatureFilter
-    from src.features.threshold_detector import ThresholdDetector
+    from src.features.threshold_detector import ThresholdDetector, l1_rate_counts
     from src.models.ensemble import get_default_ensemble
     from src.models.ood_detector import OODDetector
 
@@ -178,22 +212,27 @@ def real_scorer() -> FlowScorer:  # pragma: no cover - needs model artifacts
     p = REPO / "models" / "ood_model.joblib"
     ood = OODDetector.load(str(p)) if p.is_file() else OODDetector()
 
-    def score(feats, src, dst, ts, ml=True):
+    def l1(feats, src, dst, ts):
         t = thr.record_flow(feats, src_ip=src, dst_ip=dst, timestamp=ts)
         s = sig.inspect_flow_features(feats, src_ip=src, dst_ip=dst)
         ls = lows.observe({"src_ip": src, "src_port": feats.get("Source Port"), "dst_ip": dst,  # as /score/flow does
                            "dst_port": feats.get("Destination Port") or 80,
                            "duration_sec": float(feats.get("Flow Duration", 0.0)) / 1e6,
                            "fwd_bytes": float(feats.get("Fwd Packets Length Total", 0.0) or 0.0),
+                           "bwd_packets": feats.get("Total Backward Packets"),
                            "header_complete": True}, now=ts)
-        l1 = bool(t.is_violation or s.matched or ls)
+        return bool(l1_rate_counts(t, feats) or s.matched or ls)
+
+    def score(feats, src, dst, ts, ml=True):
+        r1 = l1(feats, src, dst, ts)
         if not ml:
-            return {"L1": l1, "L2": False, "OOD": False, "label": "unscored"}
-        label, conf, _ = ens.score_flow(feats, feature_completeness=None)
+            return {"L1": r1, "L2": False, "OOD": False, "label": "unscored"}
+        label, conf, _ = ens.score_flow(feats, mode=L2_MODE, feature_completeness=None)
         o = ood.assess_features(feats) if ood.is_model_backed else ood.assess(float(conf))
-        return {"L1": l1, "L2": label != "Benign",
+        return {"L1": r1, "L2": label != "Benign",
                 "OOD": bool(o.get("ood_suspected")), "label": label}
 
+    score.l1 = l1  # v5.3.0: L1 is re-run on every analysis; only ML/OOD verdicts come from the cache
     return score
 
 
@@ -236,13 +275,24 @@ def navigator_layer(results: List[dict], scenarios: Dict) -> dict:
     }
 
 
+L2_MODE = os.environ.get("DDOS_LAB_L2_MODE", "xgb_only")  # v5.3.0: the mode /score/flow uses by default
+
+
 def model_fingerprint() -> str:
-    """Short id of the model artifacts in use, so cached per-flow scores are never reused across models."""
+    """Short id of the model artifacts actually used + the L2 mode, so cached per-flow scores are never
+    reused across models or modes (v5.3.0: only the artifacts in use, not every file in models/)."""
     import hashlib
 
-    h = hashlib.sha256()
-    for p in sorted((REPO / "models").glob("*")):
-        if p.is_file() and p.suffix in (".pkl", ".joblib", ".json", ".pt"):
+    m = REPO / "models"
+    from src.models.ensemble import default_xgb_path
+
+    xgb = Path(default_xgb_path())
+    used = [xgb, m / "ood_model.joblib", m / "class_medians.json"]
+    if L2_MODE != "xgb_only":
+        used += [m / "cicddos2019_rf.pkl", m / "ensemble_weights.joblib"]
+    h = hashlib.sha256(f"mode={L2_MODE}".encode())
+    for p in used:
+        if p.is_file():
             st = p.stat()
             h.update(f"{p.name}:{st.st_size}:{int(st.st_mtime)}".encode())
     return h.hexdigest()[:12]
@@ -255,7 +305,9 @@ def main() -> None:  # pragma: no cover - CLI
 
     ap = argparse.ArgumentParser(description="Analyse Mininet lab pcaps with the real detection stack")
     ap.add_argument("run_dirs", nargs="+", help="one or more data/lab_runs/<run> directories (merged)")
+    ap.add_argument("--out", default=str(OUT_DIR), help="output directory (keep DEV and held-out apart)")
     args = ap.parse_args()
+    out_dir = Path(args.out)
     scs = load_scenarios()
     scorer = real_scorer()
     fp = model_fingerprint()
@@ -272,12 +324,16 @@ def main() -> None:  # pragma: no cover - CLI
             flows = flows_from_pcap(run_dir / run["pcap"])
             cache = cache_dir / f"{run['scenario']}.json"
             cached = json.loads(cache.read_text()) if cache.is_file() else None
-            if cached and len(cached) == len(flows):  # per-flow scores reused; only aggregation re-runs
+            store: list = []
+            if cached and len(cached) == len(flows):  # ML/OOD verdicts reused; L1 always re-run (cheap, may change)
                 it = iter(cached)
-                use = lambda *a, _it=it, **k: next(_it)  # noqa: E731
-            else:
-                store: list = []
 
+                def use(*a, _it=it, _s=store, **k):
+                    r = dict(next(_it))
+                    r["L1"] = scorer.l1(*a)
+                    _s.append(r)
+                    return r
+            else:
                 def use(*a, _s=store, **k):
                     r = scorer(*a, **k)
                     _s.append(r)
@@ -285,16 +341,15 @@ def main() -> None:  # pragma: no cover - CLI
             res = analyse_run(run, sc.expected.model_dump(), flows, use)
             res["run"] = run_dir.name
             results = [r for r in results if r["scenario"] != res["scenario"]] + [res]  # later run wins
-            if not (cached and len(cached) == len(flows)):
-                cache.write_text(json.dumps(store))
+            cache.write_text(json.dumps(store))  # always: refreshed L1 + ML/OOD (scripts/detection_latency.py reads it)
             print(res["scenario"], res["outcome"], res["observed_layers"], res["mttd_s"],
                   f"flows={res['flows']} ml_scored={res['ml_scored_flows']} run={run_dir.name}", flush=True)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     report = {"runs": runs_used, "model_fingerprint": fp, "containment": containment, "results": results}
-    (OUT_DIR / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    (OUT_DIR / "navigator_layer.json").write_text(json.dumps(navigator_layer(results, scs), indent=2), encoding="utf-8")
-    (OUT_DIR / "coverage.md").write_text(coverage_markdown(results, containment), encoding="utf-8")
-    print("wrote", OUT_DIR)
+    (out_dir / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out_dir / "navigator_layer.json").write_text(json.dumps(navigator_layer(results, scs), indent=2), encoding="utf-8")
+    (out_dir / "coverage.md").write_text(coverage_markdown(results, containment), encoding="utf-8")
+    print("wrote", out_dir)
 
 
 if __name__ == "__main__":  # pragma: no cover

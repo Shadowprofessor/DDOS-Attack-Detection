@@ -42,7 +42,19 @@ def _detail_text(detail: Any) -> str:
 def _sections(inc: Dict[str, Any]) -> Dict[str, Any]:
     analysis = ((inc.get("analysis") or {}).get("analysis")) or None
     provenance = inc.get("analysis") or {}
-    return {"analysis": analysis, "provenance": provenance}
+    # v5.3.0 "why it was flagged": live L1 alert reasons (aggregate.alert_history) + the analyst's explanation
+    why = [{"detected_by": f"{h.get('layer', '?')} alert", "attack_type": h.get("rule"), "confidence": None,
+            "mitre": [], "reason": h.get("detail")} for h in ((inc.get("aggregate") or {}).get("alert_history") or [])]
+    if provenance.get("explanation"):
+        why.append(provenance["explanation"])
+    return {"analysis": analysis, "provenance": provenance, "why": why}
+
+
+def _why_line(x: Dict[str, Any]) -> str:
+    conf = x.get("confidence")
+    return (f"{x.get('detected_by')}: {x.get('attack_type') or '-'}"
+            f" (confidence {'n/a, rule' if conf is None else f'{conf:.2f}'}"
+            f"{'; ' + ', '.join(x['mitre']) if x.get('mitre') else ''}). Reason: {x.get('reason') or '-'}")
 
 
 def to_markdown(inc: Dict[str, Any]) -> str:
@@ -65,6 +77,8 @@ def to_markdown(inc: Dict[str, Any]) -> str:
     if inc.get("cert_in_deadline"):
         out.append(f"**CERT-In deadline:** {_iso(inc['cert_in_deadline'])} "
                    f"(reported: {_iso(inc.get('cert_in_reported_at'))})  ")
+    if sec["why"]:
+        out += ["", "## Why it was flagged", ""] + [f"- {e(_why_line(x))}" for x in sec["why"]]
     out += ["", "## Summary", ""]
     a = sec["analysis"]
     if a:
@@ -122,6 +136,8 @@ def to_pdf(inc: Dict[str, Any]) -> bytes:
     if inc.get("cert_in_deadline"):
         meta.append(("CERT-In deadline", _iso(inc["cert_in_deadline"])))
     story.append(Table([[p(k), p(v)] for k, v in meta], colWidths=[40 * mm, 130 * mm]))
+    if sec["why"]:
+        story += [Spacer(1, 6 * mm), p("Why it was flagged", "Heading2")] + [p(f"- {_why_line(x)}") for x in sec["why"]]
     story += [Spacer(1, 6 * mm), p("Summary", "Heading2")]
     a = sec["analysis"]
     if a:

@@ -12,6 +12,7 @@ export interface LiveWindow {
 export interface Episode {
   id: string; dst: string; opened_at: number; window_start: number; status: string; vector: string | null;
   rules: string[]; hint: string; peak_pps: number; peak_bps: number; top_talkers: Talker[]; closed_at: number | null;
+  explanation?: { detected_by: string; attack_type: string; confidence: number | null; mitre: string[]; reason: string } | null;
 }
 export interface OvsRate {
   switch: string; port: string; host?: string | null; ts: number; rx_packets: number; tx_packets: number;

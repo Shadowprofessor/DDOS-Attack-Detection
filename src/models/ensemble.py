@@ -117,7 +117,7 @@ class EnsembleClassifier:
             )
 
         # Load XGBoost model
-        xgb_file = xgb_path or os.path.join(DEFAULT_MODEL_DIR, "cicddos2019_xgboost.pkl")
+        xgb_file = xgb_path or default_xgb_path()
         if os.path.isfile(xgb_file):
             self.xgb_classifier = DDoSClassifier(xgb_file)
             try:
@@ -573,6 +573,16 @@ class EnsembleClassifier:
 
 # Global singleton instance for module-level convenience API
 _default_ensemble: Optional[EnsembleClassifier] = None
+
+
+def default_xgb_path() -> str:
+    """v5.3.0: DDOS_XGB_MODEL, else the CIC+lab retrained model if present (it passed the pre-registered
+    deploy rule on CIC, docs/eval/l2_retrain/), else the original CIC-DDoS2019 model."""
+    env = os.environ.get("DDOS_XGB_MODEL")
+    if env:
+        return env
+    lab = os.path.join(DEFAULT_MODEL_DIR, "l2_cic_lab_xgboost.pkl")
+    return lab if os.path.isfile(lab) else os.path.join(DEFAULT_MODEL_DIR, "cicddos2019_xgboost.pkl")
 
 
 def get_default_ensemble() -> EnsembleClassifier:
