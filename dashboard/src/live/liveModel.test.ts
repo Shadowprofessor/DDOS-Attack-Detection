@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent, empty, fmtRate, fromSnapshot, pickVictim, seriesPoints, topTalkers, type LiveWindow } from "./liveModel";
+import { applyEvent, empty, fmtRate, fromSnapshot, pickVictim, seriesPoints, topTalkers, withVictimPort, type LiveWindow } from "./liveModel";
 
 const w = (start: number, pps: number, dst = "10.99.0.10", talkers = [{ ip: "10.99.0.100", packets: pps }]): LiveWindow => ({
   start, end: start + 1, dst, packets: pps, bytes: pps * 40, pps, bps: pps * 320, unique_src: 20, src_entropy: 4.3,
@@ -73,5 +73,15 @@ describe("live model", () => {
       action_type: "LAB_OVS_DROP", victim_ip: "10.99.0.10", ts: 12, detail: "drop", approved_at: 10 });
     expect(m.enforcement[0]?.state).toBe("applied");
     expect(applyEvent(m, { type: "live.reset" }).enforcement).toEqual([]);
+  });
+
+  it("keeps a victim-port series from OVS tx counters (ground truth), in time order", () => {
+    const port = (ts: number, tx: number, host = "victim") => ({ switch: "s1", port: "s1-eth1", host, ts, rx_packets: 0, tx_packets: 0, rx_dropped: 0, tx_dropped: 0, rx_pps: 0, tx_pps: tx });
+    let m = empty();
+    m = applyEvent(m, { type: "live.ovs", ports: [port(10, 2997), port(10, 5, "attacker")] });
+    m = applyEvent(m, { type: "live.ovs", ports: [port(12, 0)] });
+    m = applyEvent(m, { type: "live.ovs", ports: [port(11, 999)] }); // out of order: ignored
+    expect(m.victimPort).toEqual([{ end: 10, pps: 2997 }, { end: 12, pps: 0 }]);
+    expect(withVictimPort([], [port(1, 5, "attacker")])).toEqual([]);
   });
 });

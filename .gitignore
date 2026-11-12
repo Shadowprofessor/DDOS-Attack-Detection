@@ -64,3 +64,6 @@ docs/plans/ROADMAP.md
 
 # Local dev keys (generated when no keys are configured)
 .dev-keys
+
+# Personal share drafts (v6.1.0; never published)
+docs/SHARE.md

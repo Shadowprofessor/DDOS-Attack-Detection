@@ -13,7 +13,7 @@ human-approved containment, demonstrated live in a Mininet lab.**
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)
 [![Release](https://img.shields.io/github/v/release/Shadowprofessor/DDOS-Attack-Detection)](https://github.com/Shadowprofessor/DDOS-Attack-Detection/releases/latest)
 
-> If the GIF above does not load yet, it has not been recorded: see [`scripts/record_demo.md`](scripts/record_demo.md).
+<p align="center"><sub>A <b>replay</b> of the recorded live8 lab run at 2× speed. The approval is re-enacted at its real time, and the lab enforcer is mocked. The switch-counter drop is the one recorded after the real approved rule. How it is made: <a href="scripts/record_demo.md">scripts/record_demo.md</a>.</sub></p>
 
 ## What it does
 
@@ -138,6 +138,11 @@ Full method, per-class ML numbers and the injection evaluation: [**REPORT.md**](
   - Live, it called the UDP flood a "SYN flood" in most runs.
   - Its plans proposed single-IP drops that would have stopped ~0–2% of the flood. The platform's own
     coverage measurement, not the model, picks the effective step.
+- **The live capture under-counts under load.**
+  - The victim-side `tcpdump` (writing to the shared Windows disk) recorded bursts of 0–4,700 pkt/s,
+    while the switch delivered a steady ~3,000 pkt/s.
+  - Alerts still fire, and MTTC is measured from the switch counters, which the Live attack page now
+    also charts.
 - **Containment is proven on one attack shape**: all sources behind one switch port, n = 2 successful live runs.
 - **Human-in-the-loop is slow by design.** Attack start → contained was 41–58 s, mostly the human approving.
   There is no auto-approve.

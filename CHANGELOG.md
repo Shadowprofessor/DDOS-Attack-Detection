@@ -4,6 +4,52 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] — 2026-11-13
+
+"Make the repo land in 30 seconds."
+
+### Added
+- **README rewrite** for a first-time reader:
+  - a one-line hook and the demo GIF;
+  - badges for CI, CodeQL, license, Python and the latest release;
+  - L0–L4 in five bullets, a Mermaid architecture diagram and a 3-command quick start;
+  - an honest limitations section, and citations.
+  - The old long README is kept as `docs/REFERENCE.md`, with its links fixed.
+- **Generated results.** `scripts/readme_results.py` builds one block (live MTTD per run and scenario, MTTC,
+  DEV vs HELD-OUT coverage, triage accuracy, false alarms) from the results files. It is placed identically in
+  README.md and REPORT.md, and `tests/test_readme_results.py` fails if either drifts. The judgement calls are
+  written down in `docs/eval/live/annotations.json`: live8 UDP was already contained, the live9 duplicate rule
+  is not counted, and live6 was lost.
+- **Demo GIF:** `docs/media/demo.gif` (1.4 MB), produced headlessly by `scripts/record_demo.py`.
+  - It replays the recorded live8 pcap and switch counters, drives the site with the existing Node Playwright,
+    and builds the GIF with Pillow (no ffmpeg).
+  - Every frame is captioned as a replay with a mocked enforcer.
+  - `scripts/record_demo.md` covers both this and recording a real run (window size, what to capture, an
+    ffmpeg command for a GIF under 10 MB).
+- **Live attack: a switch-counter chart** ("Delivered to the victim port, ground truth"). The lab containment
+  card now sits under it.
+- `pcap_replay_live.py --ovs`: replays a run's OVS samples, time-shifted exactly like its packets.
+- **Repo hygiene:**
+  - CONTRIBUTING, SECURITY and CODE_OF_CONDUCT (the earlier SECURITY and CONTRIBUTING content was merged in);
+  - bug, detection-result and PR templates, with a safety checklist;
+  - `CITATION.cff` (Sachit Sharma, NIIT University).
+  - Tests check that the citation version tracks the CHANGELOG and that LICENSE is unchanged.
+- **Repo metadata:** description, homepage (docs/DEMO.md) and 15 topics.
+
+### Fixed
+- **A live incident no longer inherits the previous flood's ML verdict** (live9).
+  - The UDP-flood incident carried "Syn 0.99" from the SYN flood before it, and Lightning repeated it. This
+    is one cause of the recorded UDP → "SYN flood" error.
+  - A verdict now counts only if its flow ended inside the current alert episode.
+  - Not yet re-measured live, so the recorded errors stand.
+
+### Measured
+- **live9** (v6.0.0 rehearsal): alert on the website 6.23 s (SYN) / 3.04 s (UDP); **MTTC 3.55 s** (1,493 →
+  124 pps). The pop-ups and sound worked live.
+- **Found:** the victim-side `tcpdump` drops packets under load. It recorded 0–4,700 pkt/s bursts while OVS
+  counted a steady ~3,000 pkt/s. MTTC was always taken from OVS. This is now stated in the README, the REPORT
+  and the UI.
+
 ## [6.0.0] — 2026-11-13
 
 Final release of the roadmap. The major version marks the complete demo path: live attack → alert

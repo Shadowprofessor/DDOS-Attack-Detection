@@ -31,8 +31,11 @@ export interface Enforcement {
   action_id: string; state: string; target: string | null; action_type: string | null; victim_ip: string | null;
   ts: number | null; detail: string; approved_at: number | null;
 }
+/** v6.1.0: packets/s the switch delivered to the victim's port (OVS tx counter): the ground truth. */
+export interface SwitchPoint { end: number; pps: number }
 export interface LiveModel {
   enforcement: Enforcement[];
+  victimPort: SwitchPoint[];
   // Keyed by server-supplied strings: Maps (never plain objects) so a key like "__proto__" cannot
   // pollute a prototype, and keys must match a strict format before they are stored.
   victims: Map<string, LiveWindow[]>; open: Map<string, Episode>; episodes: Episode[];
@@ -43,7 +46,16 @@ export const KEEP_WINDOWS = 180;
 const KEEP_EPISODES = 30;
 const KEEP_FLOWS = 50;
 
-export const empty = (): LiveModel => ({ victims: new Map(), open: new Map(), episodes: [], flows: [], ovs: new Map(), enforcement: [] });
+export const empty = (): LiveModel => ({ victims: new Map(), open: new Map(), episodes: [], flows: [], ovs: new Map(), enforcement: [], victimPort: [] });
+
+/** Append the victim port's tx rate from one OVS sample (if present). Exported for tests. */
+export function withVictimPort(series: SwitchPoint[], ports: OvsRate[]): SwitchPoint[] {
+  const v = ports.find((r) => r.host === "victim" && typeof r.tx_pps === "number" && typeof r.ts === "number");
+  if (!v || v.tx_pps === null) return series;
+  const last = series[series.length - 1];
+  if (last && v.ts <= last.end) return series;
+  return [...series, { end: v.ts, pps: v.tx_pps }].slice(-KEEP_WINDOWS);
+}
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 const PORT_KEY = /^[A-Za-z0-9_-]{1,32}\/[A-Za-z0-9_-]{1,16}$/;
@@ -61,7 +73,8 @@ export function fromSnapshot(s: LiveSnapshot): LiveModel {
     const k = ovsKey(r);
     if (k) m.ovs.set(k, r);
   }
-  return { ...m, episodes: s.episodes ?? [], flows: s.flows ?? [], enforcement: m.enforcement };
+  return { ...m, episodes: s.episodes ?? [], flows: s.flows ?? [], enforcement: m.enforcement,
+    victimPort: withVictimPort([], s.ovs ?? []) };
 }
 
 type Ev = { type: string; [k: string]: unknown };
@@ -98,7 +111,7 @@ export function applyEvent(m: LiveModel, ev: Ev): LiveModel {
         const k = ovsKey(r);
         if (k) ovs.set(k, r);
       }
-      return { ...m, ovs };
+      return { ...m, ovs, victimPort: withVictimPort(m.victimPort, (ev.ports as OvsRate[]) ?? []) };
     }
     case "live.enforcement":  // v5.4.0: what the lab enforcer did with an APPROVED action
       return { ...m, enforcement: [ev as unknown as Enforcement, ...m.enforcement].slice(0, 30) };
@@ -124,16 +137,17 @@ export function pickVictim(m: LiveModel, current: string | null): string | null 
 }
 
 /** SVG polyline points for a series over the last `span` seconds (x: time, y: value, auto-scaled). */
-export function seriesPoints(ws: LiveWindow[], key: "pps" | "bps", width: number, height: number, span = 120): { points: string; max: number } {
+export function seriesPoints(ws: Array<{ end: number; pps: number; bps?: number }>, key: "pps" | "bps", width: number, height: number, span = 120): { points: string; max: number } {
   const lastW = ws[ws.length - 1];
   if (!lastW) return { points: "", max: 0 };
   const tEnd = lastW.end;
   const tStart = tEnd - span;
   const shown = ws.filter((w) => w.end > tStart);
-  const max = Math.max(1, ...shown.map((w) => w[key]));
+  const val = (w: { pps: number; bps?: number }) => (key === "pps" ? w.pps : w.bps ?? 0);
+  const max = Math.max(1, ...shown.map(val));
   const pts = shown.map((w) => {
     const x = ((w.end - tStart) / span) * width;
-    const y = height - (w[key] / max) * (height - 4) - 2;
+    const y = height - (val(w) / max) * (height - 4) - 2;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
   return { points: pts.join(" "), max };

@@ -383,6 +383,12 @@ These are stated plainly so nobody has to discover them.
    - That is deliberate (human in the loop), but it is slow for a real flood.
    - There is no auto-approve option, by design; adding one is a decision for the owner, not for
      the AI.
+7. **The victim-side capture drops packets under load** (found in v6.1.0, live8).
+   - Over the same seconds, OVS counted a steady ~3,000 pkt/s delivered to the victim port, but
+     `tcpdump -U` writing to the shared Windows disk recorded bursts of 0–4,700 pkt/s.
+   - L1 alerts still fired, and MTTC was always taken from the switch counters.
+   - The capture-based chart and per-window rates understate a flood, so the Live attack page now
+     also charts the switch counters as ground truth.
 7. **Live MTTD includes about 3 s of bridge lag** (p50 2.8–3.0 s, max 15 s): the bridge tails
    pcaps from a shared disk. A sensor on the switch itself would be faster.
 8. **Security:**
