@@ -98,7 +98,7 @@ test("AI analyst chat cannot act but still advises, and answers general question
   await expect(page.getByText(/READ_ONLY_ADVISORY/).first()).toBeVisible();
   await page.getByLabel("Question").fill("How do I secure the network against a SYN flood?");
   await page.getByRole("button", { name: "Ask" }).click();
-  await expect(page.getByText(/tcp_syncookies/)).toBeVisible(); // offline in CI: rule-based guidance
+  await expect(page.getByText(/tcp_syncookies/).first()).toBeVisible(); // offline in CI: rule-based guidance, now rendered as Markdown code
 });
 
 test("settings shows release + config, never a secret", async ({ page }) => {
