@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "DDoS Detection & Response Platform: layered rules + ML, an AI SOC analyst, and human-approved containment"
+abstract: >-
+  A layered DoS/DDoS detection and response platform. Rules and an ML ensemble detect attacks in real
+  time, an LLM analyst (NVIDIA Nemotron) explains each incident and recommends a ranked containment plan,
+  and every block requires a human administrator's approval before a time-limited rule is applied. It is
+  evaluated on CIC-DDoS2019 and on live Mininet lab runs with dev and held-out sets kept separate.
+type: software
+authors:
+  - family-names: Sharma
+    given-names: Sachit
+    affiliation: "NIIT University"
+repository-code: "https://github.com/Shadowprofessor/DDOS-Attack-Detection"
+license: MIT
+version: 6.1.0
+date-released: "2026-11-13"
+keywords:
+  - ddos-detection
+  - intrusion-detection
+  - network-security
+  - incident-response
+  - machine-learning
+  - llm-agent
+  - mininet
+  - sdn

@@ -19,7 +19,7 @@ from typing import Callable, Dict, Iterable, List, Tuple
 
 REPO = Path(__file__).resolve().parent.parent
 FILES = ["REPORT.md", "README.md", "docs/grc/control_mapping.md", "docs/grc/risk_register.md",
-         "docs/DATASETS.md", "docs/IR.md", "docs/eval/cross_dataset.md", "docs/purple_team/README.md"]
+         "docs/DATASETS.md", "docs/IR.md", "docs/eval/cross_dataset.md", "docs/purple_team/README.md", "docs/REFERENCE.md"]
 URL_RE = re.compile(r"https?://[^\s<>\)\]\"'`|]+")
 ARXIV_RE = re.compile(r"arXiv:(\d{4}\.\d{4,5})(v\d+)?", re.I)
 SKIP_HOSTS = ("localhost", "127.0.0.1", "example.com", "example.org", "evil.example", "192.0.2.", "198.51.100.",

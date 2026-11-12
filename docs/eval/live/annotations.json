@@ -1,0 +1,12 @@
+{
+  "_about": "Human judgement calls used by scripts/readme_results.py, written down so they are reviewable. Each key is <run>/<scenario> or <run>/containment/<index>.",
+  "exclude_mttd": {
+    "live8/contain_udp_flood": "the SYN flood's 300 s port rule was still active when this flood started, so it never reached the victim; it was detected ~1.5 s after the rule expired"
+  },
+  "exclude_mttc": {
+    "live9/containment/1": "a second, identical port drop approved 3 s after the first; the victim was already being contained, so it is not an independent MTTC"
+  },
+  "lost_runs": {
+    "live6": "the bridge exited because the server was not up; nothing reached the website (fixed in v5.4.0: the bridge now waits)"
+  }
+}

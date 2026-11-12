@@ -13,10 +13,10 @@ MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "mod
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Codes", "ml", "datasets")
 
 # These tests require the real trained artifacts on disk. On a fresh clone (CI without
-# artifacts) they skip with a clear reason — regenerate per README "Model artifacts".
+# artifacts) they skip with a clear reason — regenerate per docs/REFERENCE.md "Model artifacts".
 pytestmark = pytest.mark.skipif(
     not os.path.isfile(os.path.join(MODEL_DIR, "stage1_binary_xgb.joblib")),
-    reason="model artifacts not present; regenerate per README 'Model artifacts' (skipped in fresh-clone CI)",
+    reason="model artifacts not present; regenerate per docs/REFERENCE.md 'Model artifacts' (skipped in fresh-clone CI)",
 )
 
 def test_model_artifacts_exist():

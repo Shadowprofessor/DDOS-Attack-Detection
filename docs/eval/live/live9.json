@@ -1,0 +1,76 @@
+{
+  "victim": "10.99.0.10",
+  "results": [
+    {
+      "scenario": "contain_syn_flood",
+      "attack": true,
+      "duration_s": 121.03,
+      "alerted": true,
+      "window_s": 2.02,
+      "website_s": 6.23,
+      "incident_s": 6.32,
+      "l3_verdict": "SYN flood",
+      "l3_source": "llm:nvidia/nemotron-3.5-lightning-30b-a3b",
+      "l2_s": 19.46,
+      "l2_label": "Syn",
+      "corroboration_s": null,
+      "scored_flows": 189,
+      "attack_verdicts": 150,
+      "episodes": 1,
+      "offline_l1_s": null,
+      "offline_run": null
+    },
+    {
+      "scenario": "contain_udp_flood",
+      "attack": true,
+      "duration_s": 120.8,
+      "alerted": true,
+      "window_s": 1.96,
+      "website_s": 3.04,
+      "incident_s": 3.06,
+      "l3_verdict": "SYN flood (TCP-based direct network flood)",
+      "l3_source": "llm:nvidia/nemotron-3.5-lightning-30b-a3b",
+      "l2_s": 10.67,
+      "l2_label": "DNS",
+      "corroboration_s": null,
+      "scored_flows": 372,
+      "attack_verdicts": 252,
+      "episodes": 1,
+      "offline_l1_s": null,
+      "offline_run": null
+    }
+  ],
+  "clock": {
+    "min_wall_minus_packet_s": 0.53,
+    "post_lag_p50_s": 7.47,
+    "post_lag_max_s": 16.04,
+    "note": "wall = Windows clock at the bridge; packet = WSL2 capture clock. The minimum gap is an upper bound on (WSL2 clock behind Windows + capture-to-read delay)."
+  },
+  "run": "live9",
+  "containment": [
+    {
+      "action_id": "394b73fe",
+      "target": "attacker",
+      "scenario": "contain_udp_flood",
+      "approval_to_applied_s": 0.84,
+      "mttc_s": 3.55,
+      "attack_start_to_contained_s": 55.92,
+      "victim_pps_before": 1493,
+      "victim_pps_after_15s": 124,
+      "reduction": 0.917,
+      "source": "OVS port counters"
+    },
+    {
+      "action_id": "656d2a18",
+      "target": "attacker",
+      "scenario": "contain_udp_flood",
+      "approval_to_applied_s": 0.57,
+      "mttc_s": 2.15,
+      "attack_start_to_contained_s": 57.93,
+      "victim_pps_before": 990,
+      "victim_pps_after_15s": 0,
+      "reduction": 1.0,
+      "source": "OVS port counters"
+    }
+  ]
+}

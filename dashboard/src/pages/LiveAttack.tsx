@@ -5,7 +5,7 @@ import { api, type IncidentPage } from "../api/client";
 import { SeverityBadge } from "../components/SeverityBadge";
 import {
   applyEvent, empty, fmtRate, fromSnapshot, pickVictim, seriesPoints, topTalkers,
-  type LiveModel, type LiveSnapshot, type LiveWindow,
+  type LiveModel, type LiveSnapshot,
 } from "../live/liveModel";
 
 // v5.2.0 Live Attack view: lab windows pushed by scripts/live_bridge.py, L1-evaluated on the server,
@@ -14,9 +14,10 @@ import {
 const W = 640;
 const H = 150;
 
-function Chart({ ws, k, label }: { ws: LiveWindow[]; k: "pps" | "bps"; label: string }) {
+function Chart({ ws, k, label }: { ws: Array<{ end: number; pps: number; bps?: number }>; k: "pps" | "bps"; label: string }) {
   const { points, max } = seriesPoints(ws, k, W, H);
-  const last = ws[ws.length - 1];
+  const lastW = ws[ws.length - 1];
+  const last = lastW ? { pps: lastW.pps, bps: lastW.bps ?? 0 } : undefined;
   return (
     <figure className="chart">
       <figcaption>
@@ -148,8 +149,37 @@ export function LiveAttackPage() {
         </label>
       )}
 
+      {model.victimPort.length > 0 && (
+        <div className="card">
+          <h2>Delivered to the victim port (switch counters, ground truth)</h2>
+          <Chart ws={model.victimPort} k="pps" label="Victim port packets per second (OVS)" />
+          <p className="small muted">
+            What the switch actually sent to the victim, sampled about every 2 s. Containment (MTTC) is measured from this.
+            The capture-based chart below can under-count under load.
+          </p>
+        </div>
+      )}
+
       <div className="card">
-        <h2>Traffic to {shown ? <span className="mono">{shown}</span> : "—"} (1 s windows)</h2>
+        <h2>Lab containment (human-approved)</h2>
+        {model.enforcement.length === 0 ? (
+          <p className="muted small">No containment yet. Rules appear here only after an admin approves a proposal on Approvals and the lab enforcer applies it.</p>
+        ) : (
+          <ul className="timeline">
+            {model.enforcement.map((e, i) => (
+              <li key={`${e.action_id}-${e.state}-${i}`}>
+                <span className={`chip ${e.state === "applied" ? "ok" : e.state === "refused" || e.state === "failed" ? "warn" : ""}`}>{e.state}</span>
+                <span className="mono">{e.action_type} {e.target}</span>
+                <span className="muted small">{e.action_id}{e.approved_at && e.ts ? ` · ${Math.max(0, e.ts - e.approved_at).toFixed(1)} s after approval` : ""}</span>
+                <span className="reason small">{e.detail}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Traffic to {shown ? <span className="mono">{shown}</span> : "—"} (1 s windows, victim-side capture)</h2>
         <Chart ws={ws} k="pps" label="Packets per second" />
         <Chart ws={ws} k="bps" label="Bits per second" />
         {last && (
@@ -223,24 +253,6 @@ export function LiveAttackPage() {
               </tr>))}
             </tbody>
           </table></div>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>Lab containment (human-approved)</h2>
-        {model.enforcement.length === 0 ? (
-          <p className="muted small">No containment yet. Rules appear here only after an admin approves a proposal on Approvals and the lab enforcer applies it.</p>
-        ) : (
-          <ul className="timeline">
-            {model.enforcement.map((e, i) => (
-              <li key={`${e.action_id}-${e.state}-${i}`}>
-                <span className={`chip ${e.state === "applied" ? "ok" : e.state === "refused" || e.state === "failed" ? "warn" : ""}`}>{e.state}</span>
-                <span className="mono">{e.action_type} {e.target}</span>
-                <span className="muted small">{e.action_id}{e.approved_at && e.ts ? ` · ${Math.max(0, e.ts - e.approved_at).toFixed(1)} s after approval` : ""}</span>
-                <span className="reason small">{e.detail}</span>
-              </li>
-            ))}
-          </ul>
         )}
       </div>
 
