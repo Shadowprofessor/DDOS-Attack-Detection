@@ -189,3 +189,17 @@ def test_stale_approvals_expire_and_are_never_handed_to_a_later_enforcer(tmp_pat
     monkeypatch.setattr("src.mitigation.manager.time.time", lambda: real() + 61)
     assert mgr.lab_queue() == []
     assert mgr.get_action(aid)["lab"]["state"] == "expired_unapplied"
+
+
+def test_stale_lab_proposal_cannot_be_approved(tmp_path, monkeypatch):
+    """live6: PENDING proposals from an earlier run must not be approvable into the next run."""
+    import time as _t
+
+    mgr = PendingActionManager(str(tmp_path / "a.json"))
+    aid = mgr.propose("LAB_OVS_DROP", "10.99.0.111", "10.99.0.10", "old proposal", ttl_s=60)
+    real = _t.time
+    monkeypatch.setattr("src.mitigation.manager.time.time", lambda: real() + 61)
+    ok, msg, action = mgr.approve(aid, approver="admin")
+    assert not ok and "older than its TTL" in msg
+    assert action["status"] == "FAILED"
+    assert mgr.lab_queue() == []

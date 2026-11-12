@@ -457,6 +457,13 @@ class PendingActionManager:
             if not ok:
                 return {"success": False, "message": f"lab target refused at approval: {why}",
                         "executed": [{"command": c, "status": "REFUSED"} for c in commands]}
+            # v6.0.0 (live6): a lab proposal is only valid for its TTL. An old proposal from an earlier run
+            # (still PENDING on the Approvals page) must not block hosts in the next run.
+            ttl = clamp_ttl(action.get("ttl_s") or (action.get("lab") or {}).get("ttl_s"))
+            if action.get("proposed_at") and action["proposed_at"] + ttl < time.time():
+                return {"success": False, "message": f"lab proposal is older than its TTL ({ttl} s); "
+                        "propose it again from the incident if it is still needed",
+                        "executed": [{"command": c, "status": "REFUSED_STALE"} for c in commands]}
             lab = action.setdefault("lab", {})
             lab.update(state="queued", queued_at=time.time(), ttl_s=clamp_ttl(action.get("ttl_s")),
                        cookie=hex(cookie_for(action_id)))

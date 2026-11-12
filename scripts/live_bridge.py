@@ -13,6 +13,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -41,9 +42,17 @@ def main() -> None:
     run = Path(args.run_dir)
     run.mkdir(parents=True, exist_ok=True)
     http = RequestsHttp(args.api, key)
+    # v6.0.0 (live6): starting the bridge before the server is ready used to exit at once, so a whole lab
+    # run was lost. Wait for the server instead (Ctrl+C to give up).
     status, health = http.get("/health")
-    if status != 200:
-        raise SystemExit(f"platform not reachable at {args.api} (status {status}); start uvicorn first")
+    waited = 0
+    while status != 200:
+        if waited % 10 == 0:
+            print(f"waiting for the platform at {args.api} (status {status}); start it with "
+                  "`python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000`", flush=True)
+        time.sleep(1.0)
+        waited += 1
+        status, health = http.get("/health")
     print(f"platform {args.api}: {health}")
     if args.reset:
         http.post("/api/live/reset")
