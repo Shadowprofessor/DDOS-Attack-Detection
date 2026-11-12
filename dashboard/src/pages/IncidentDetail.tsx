@@ -73,10 +73,13 @@ function AgentPlanPanel({ plan, onPropose, busy }: { plan: AgentPlan; onPropose:
         <p className="warn small">Policy removed: {plan.policy_violations.join("; ")}</p>
       )}
       <div className="table-wrap"><table className="incidents">
-        <thead><tr><th>#</th><th>Action</th><th>Target</th><th>Blast radius</th><th>Reversible</th><th>TTL</th><th>Why</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Action</th><th>Target</th><th>Stops</th><th>Blast radius</th><th>Reversible</th><th>TTL</th><th>Why</th><th></th></tr></thead>
         <tbody>{plan.plan.map((s) => (
           <tr key={s.rank}>
             <td>{s.rank}</td><td className="mono small">{s.action}</td><td className="mono">{s.target}</td>
+            <td className={s.coverage !== null && s.coverage !== undefined && s.coverage < 0.5 ? "warn" : ""}>
+              {s.coverage === null || s.coverage === undefined ? "—" : `~${Math.round(s.coverage * 100)}% of the attack`}
+            </td>
             <td className={`blast-${s.blast_radius}`}>{s.blast_radius}</td><td>{s.reversible ? "yes" : "no"}</td>
             <td>{s.ttl_s} s</td><td className="small">{s.rationale}</td>
             <td>{s.action.startsWith("LAB_") ? (

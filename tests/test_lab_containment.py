@@ -175,3 +175,17 @@ def test_no_approve_or_execute_in_lab_code_paths():
         calls = {n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
                  for n in ast.walk(tree) if isinstance(n, ast.Call)}
         assert not calls & {"approve", "_execute_action", "propose"}, path
+
+
+def test_stale_approvals_expire_and_are_never_handed_to_a_later_enforcer(tmp_path, monkeypatch):
+    """live5: two actions approved after the run ended sat in the queue for the next run's enforcer."""
+    import time as _t
+
+    mgr = PendingActionManager(str(tmp_path / "a.json"))
+    aid = mgr.propose("LAB_OVS_DROP", "10.99.0.111", "10.99.0.10", "late approval", ttl_s=60)
+    mgr.approve(aid, approver="admin")
+    assert [q["action_id"] for q in mgr.lab_queue()] == [aid]
+    real = _t.time
+    monkeypatch.setattr("src.mitigation.manager.time.time", lambda: real() + 61)
+    assert mgr.lab_queue() == []
+    assert mgr.get_action(aid)["lab"]["state"] == "expired_unapplied"

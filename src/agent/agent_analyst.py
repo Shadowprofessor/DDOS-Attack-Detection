@@ -45,6 +45,9 @@ class PlanStep(BaseModel):
     reversible: bool
     ttl_s: int = Field(300, ge=30, le=3600)
     rationale: str = Field(..., min_length=5, max_length=400)
+    # computed by the platform after the plan is returned (never by the model): share of the attack
+    # traffic toward the victim that this step would stop, from OVS port counters / live windows
+    coverage: Optional[float] = Field(None, ge=0.0, le=1.0)
 
 
 class AgentPlan(BaseModel):
@@ -180,6 +183,22 @@ class AgentTools:
                 "attacker_port_drop_possible": bool(in_attacker_pool),
                 "note": "Every option still needs an admin's approval; the victim and the management path are never valid."}
 
+    def coverage(self, action: str, target: str) -> Optional[float]:
+        """Share of the attack traffic toward the victim this step would stop (None = no data).
+        Port drops: that host's switch-port rx rate / all non-victim ports (OVS counters).
+        IP drops: that source's packets / all packets in the last 5 live windows."""
+        if self.live is None:
+            return None
+        if action == "LAB_OVS_PORT_DROP":
+            rows = [r for r in self.live.snapshot(last=0)["ovs"] if r.get("rx_pps") is not None and r.get("host") != "victim"]
+            total = sum(r["rx_pps"] for r in rows)
+            mine = sum(r["rx_pps"] for r in rows if r.get("host") == target)
+            return round(mine / total, 3) if total > 0 else None
+        ws = self._windows(None, 5)
+        total = sum(w["packets"] for w in ws)
+        mine = sum(t["packets"] for w in ws for t in w.get("top_talkers", []) if t["ip"] == target)
+        return round(min(1.0, mine / total), 3) if total > 0 else None
+
     def run(self, name: str, args: dict) -> Any:
         fn = {"get_incident": self.get_incident, "get_live_windows": self.get_live_windows,
               "get_top_talkers": self.get_top_talkers, "compare_baseline": self.compare_baseline,
@@ -211,8 +230,13 @@ TOOLS = [
 ]
 
 
-def enforce_plan_policy(plan: AgentPlan) -> (AgentPlan, List[str]):
-    """Drop any LAB step with a target the lab rules refuse; re-rank. Recorded, never silent."""
+EFFECTIVE = 0.5  # a containment step that stops less than half the attack traffic is not "effective"
+
+
+def enforce_plan_policy(plan: AgentPlan, tools: Optional["AgentTools"] = None) -> (AgentPlan, List[str]):
+    """Drop any LAB step with a target the lab rules refuse; compute each LAB step's coverage; if the
+    top LAB step would stop < 50% of the attack traffic and another stops more, move that one first
+    (v5.4.0 live5: an approved single-IP drop stopped ~2% of a 50-source flood). Recorded, never silent."""
     from lab.containment import validate_target
 
     keep, violations = [], []
@@ -222,7 +246,17 @@ def enforce_plan_policy(plan: AgentPlan) -> (AgentPlan, List[str]):
             if not ok:
                 violations.append(f"dropped step {st.rank} ({st.action} {st.target}): {why}")
                 continue
+            if tools is not None:
+                st.coverage = tools.coverage(st.action, st.target)
         keep.append(st)
+    lab = [st for st in keep if st.action.startswith("LAB_") and st.coverage is not None]
+    if lab:
+        first, best = lab[0], max(lab, key=lambda x: x.coverage)
+        if first.coverage < EFFECTIVE and best.coverage > first.coverage:
+            keep.remove(best)
+            keep.insert(keep.index(first), best)
+            violations.append(f"re-ranked: {first.action} {first.target} would stop only {first.coverage:.0%} of the "
+                              f"attack traffic; {best.action} {best.target} stops {best.coverage:.0%}")
     for i, st in enumerate(keep, 1):
         st.rank = i
     return plan.model_copy(update={"plan": keep}), violations
@@ -296,11 +330,11 @@ class AgentAnalyst:
                     reason = f"{model} unavailable ({str(e).split(':')[0]})"
                     continue
                 if plan is not None:
-                    plan, violations = enforce_plan_policy(plan)
+                    plan, violations = enforce_plan_policy(plan, tools)
                     return {**plan.model_dump(), "source": f"llm:{model}", "policy_violations": violations,
                             "tool_trace": trace, "latency_ms": round((self.clock() - t0) * 1e3, 1)}
                 reason = why
-        plan, violations = enforce_plan_policy(rule_agent(tools))
+        plan, violations = enforce_plan_policy(rule_agent(tools), tools)
         return {**plan.model_dump(), "source": "rules", "degraded_reason": reason, "policy_violations": violations,
                 "tool_trace": trace, "latency_ms": round((self.clock() - t0) * 1e3, 1)}
 

@@ -56,3 +56,34 @@ def test_mttc_from_approval_to_traffic_below_threshold():
                      "pps_before": 1480.0, "pps_after": 20.0}]
     assert "| `contain_syn_flood` | attacker | 1.5 | 4.0 | 34.0 | 1480.0 -> 20.0 |" in lm.render_containment(rows)
     assert lm.render_containment([]) == "No lab containment was applied in this run."
+
+
+def test_mttc_from_ovs_counters_reports_an_ineffective_rule_honestly():
+    """live5: a one-IP rule was applied 0.58 s after approval but the switch still sent ~2,930 pps to the victim."""
+    manifest = {"runs": [{"scenario": "contain_syn_flood", "started_at": 1000.0, "ended_at": 1120.0}]}
+    log = [{"event": "enforcement_queued", "action_id": "a1", "op": "apply", "target": "10.99.0.144", "approved_at": 1040.0},
+           {"event": "enforcement_reported", "action_id": "a1", "state": "applied", "ts": 1040.6}]
+    tx = 0
+    rows = []
+    for k in range(30):
+        ts = 1020.0 + 2 * k
+        rows.append({"ts": ts, "ports": [{"port": "s1-eth1", "host": "victim", "tx_packets": tx}]})
+        tx += 2 * (2990 if ts < 1040 else 2930)
+    r = lm.containment_ovs(manifest, log, rows)[0]
+    assert r["mttc_s"] is None and r["approval_to_applied_s"] == 0.6 and r["reduction"] < 0.05
+    md = lm.render_containment([r])
+    assert "| `contain_syn_flood` | 10.99.0.144 | 0.6 | not reached | not reached |" in md
+    manifest_short = {"runs": [{"scenario": "contain_syn_flood", "started_at": 1000.0, "ended_at": 1050.0}]}
+    rows3, tx = [], 0
+    for k in range(30):  # ineffective rule, then the scenario ends: the drop at the end is NOT containment
+        ts = 1020.0 + 2 * k
+        rows3.append({"ts": ts, "ports": [{"port": "s1-eth1", "host": "victim", "tx_packets": tx}]})
+        tx += 2 * (2930 if ts < 1050 else 0)
+    assert lm.containment_ovs(manifest_short, log, rows3)[0]["mttc_s"] is None
+    rows2, tx = [], 0
+    for k in range(30):  # an effective rule: traffic falls to ~0 after the rule
+        ts = 1020.0 + 2 * k
+        rows2.append({"ts": ts, "ports": [{"port": "s1-eth1", "host": "victim", "tx_packets": tx}]})
+        tx += 2 * (2990 if ts < 1042 else 5)
+    e = lm.containment_ovs(manifest, log, rows2)[0]
+    assert e["mttc_s"] == 4.0 and e["reduction"] > 0.8 and e["attack_start_to_contained_s"] == 44.0

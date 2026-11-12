@@ -377,10 +377,18 @@ class PendingActionManager:
         """Approved lab actions the enforcer still has to apply or remove (read-only view)."""
         with self._lock:
             self._load_from_disk()
-            out = []
+            out, changed, now = [], False, time.time()
             for a in self._pending_actions.values():
                 lab = a.get("lab") or {}
                 if not is_lab_type(a.get("action_type")) or a.get("status") not in ("EXECUTED", "ROLLED_BACK"):
+                    continue
+                # v5.4.0 (live5): an approval is valid for its TTL only. Approved but never applied within it
+                # (e.g. no enforcer running) -> expired_unapplied, never handed to a later enforcer.
+                if lab.get("state") == "queued" and (a.get("approved_at") or now) + float(lab.get("ttl_s") or 300) < now:
+                    lab.update(state="expired_unapplied", expired_unapplied_at=now)
+                    lab.setdefault("log", []).append({"state": "expired_unapplied", "ts": now,
+                                                      "detail": "approved but not applied within its TTL"})
+                    changed = True
                     continue
                 op = {"queued": "apply", "remove_requested": "remove"}.get(lab.get("state"))
                 if op:
@@ -388,6 +396,8 @@ class PendingActionManager:
                                 "target": a["attacker_ip"], "victim_ip": a.get("victim_ip"), "ttl_s": lab.get("ttl_s"),
                                 "cookie": lab.get("cookie"), "approved_at": a.get("approved_at"),
                                 "approver": a.get("approver")})
+            if changed:
+                self._save_to_disk()
             return out
 
     LAB_TRANSITIONS = {"queued": {"applied", "refused", "failed"},

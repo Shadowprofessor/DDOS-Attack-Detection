@@ -128,9 +128,72 @@ def containment(manifest: dict, log: List[dict], victim: str) -> List[dict]:
     return out
 
 
+def victim_port_rates(ovs_rows: List[dict], victim_role: str = "victim") -> List[tuple]:
+    """(ts, packets/s sent by the switch INTO the victim's port) from consecutive OVS samples."""
+    out, prev = [], None
+    for r in ovs_rows:
+        port = next((p for p in r.get("ports", []) if p.get("host") == victim_role), None)
+        if port is None:
+            continue
+        if prev is not None and r["ts"] > prev[0] and port["tx_packets"] >= prev[1]:
+            out.append((r["ts"], (port["tx_packets"] - prev[1]) / (r["ts"] - prev[0])))
+        prev = (r["ts"], port["tx_packets"])
+    return out
+
+
+def containment_ovs(manifest: dict, log: List[dict], ovs_rows: List[dict], hold: int = 2) -> List[dict]:
+    """v5.4.0 MTTC from the SWITCH (ground truth): approval -> the victim port's packet rate stays below
+    BELOW_PPS for `hold` consecutive OVS samples (~2 s apart). live5 showed pcap timestamps arriving in
+    bursts under load, so 1 s pcap windows are not trusted for this."""
+    queued = {e["action_id"]: e for e in log if e.get("event") == "enforcement_queued" and e.get("op") == "apply"}
+    applied = [e for e in log if e.get("event") == "enforcement_reported" and e.get("state") == "applied"]
+    rates = victim_port_rates(ovs_rows)
+    out = []
+    for a in applied:
+        q = queued.get(a["action_id"]) or {}
+        approved, t_apply = q.get("approved_at"), a.get("ts")
+        if t_apply is None:
+            continue
+        run = next((r for r in manifest.get("runs", []) if r["started_at"] <= t_apply <= r["ended_at"] + 5), None)
+        before = [pps for ts, pps in rates if t_apply - 8 <= ts <= t_apply]
+        end = (run["ended_at"] if run else float("inf"))
+        # only while the attack is still running: traffic stopping because the scenario ENDED is not containment
+        after = [(ts, pps) for ts, pps in rates if t_apply + 0.5 < ts <= end]
+        below = None
+        for i in range(len(after)):
+            seg = after[i:i + hold]
+            if len(seg) == hold and all(pps < BELOW_PPS for _, pps in seg):
+                below = seg[0]
+                break
+        window_after = [pps for ts, pps in after if ts <= t_apply + 15]
+        out.append({
+            "action_id": a["action_id"], "target": q.get("target"), "scenario": run["scenario"] if run else None,
+            "approval_to_applied_s": round(t_apply - approved, 2) if approved else None,
+            "mttc_s": round(below[0] - approved, 2) if below and approved else None,
+            "attack_start_to_contained_s": round(below[0] - run["started_at"], 2) if below and run else None,
+            "victim_pps_before": round(sum(before) / len(before)) if before else None,
+            "victim_pps_after_15s": round(sum(window_after) / len(window_after)) if window_after else None,
+            "reduction": (round(1 - (sum(window_after) / len(window_after)) / (sum(before) / len(before)), 3)
+                          if before and window_after and sum(before) else None),
+            "source": "OVS port counters",
+        })
+    return out
+
+
 def render_containment(rows: List[dict]) -> str:
     if not rows:
         return "No lab containment was applied in this run."
+    if rows[0].get("source") == "OVS port counters":
+        cell = lambda v: "not reached" if v is None else f"{v}"  # noqa: E731
+        lines = ["| Scenario | Rule target | Approval -> applied (s) | **MTTC: approval -> victim < 100 pps (s)** | "
+                 "Attack start -> contained (s) | Victim pps before -> 15 s after | Reduction |",
+                 "|---|---|---:|---:|---:|---|---:|"]
+        for r in rows:
+            red = "—" if r["reduction"] is None else f"{r['reduction']:.0%}"
+            lines.append(f"| `{r['scenario']}` | {r['target']} | {cell(r['approval_to_applied_s'])} | {cell(r['mttc_s'])} | "
+                         f"{cell(r['attack_start_to_contained_s'])} | {cell(r['victim_pps_before'])} -> "
+                         f"{cell(r['victim_pps_after_15s'])} | {red} |")
+        return "\n".join(lines)
     cell = lambda v: "not reached" if v is None else f"{v}"  # noqa: E731
     lines = ["| Scenario | Rule target | Approval -> applied (s) | **MTTC: approval -> below 100 pps (s)** | "
              "Attack start -> contained (s) | pps before -> after |", "|---|---|---:|---:|---:|---|"]
@@ -183,7 +246,9 @@ def main() -> None:  # pragma: no cover - CLI
         offline = {m["scenario"]: m for m in json.loads(OFFLINE.read_text()).get("mttd", [])}
     r = analyse(manifest, log, victim, {k: v.attack for k, v in scs.items()}, offline)
     r["run"] = run.name
-    r["containment"] = containment(manifest, log, victim)
+    ovs_path = run / "ovs_ports.jsonl"
+    ovs_rows = [json.loads(x) for x in ovs_path.read_text().splitlines() if x.strip()] if ovs_path.is_file() else []
+    r["containment"] = containment_ovs(manifest, log, ovs_rows) if ovs_rows else containment(manifest, log, victim)
     out = OUT_JSON.parent / f"{run.name}.json"  # one file per run; docs are written by hand from these
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(r, indent=2), encoding="utf-8")

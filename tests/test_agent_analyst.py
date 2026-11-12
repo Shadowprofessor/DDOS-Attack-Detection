@@ -181,3 +181,22 @@ def test_demo_assist_proposes_top_lab_step_and_cannot_approve(c):
     assert Http().post(f"/actions/approve/{out[0][1]}")[0] == 403  # analyst key: approval refused
     tree = __import__("ast").parse(P(spec.origin).read_text(encoding="utf-8"))
     assert "approve" not in {getattr(n.func, "attr", "") for n in __import__("ast").walk(tree) if hasattr(n, "func")}
+
+
+def test_live5_single_ip_first_is_reranked_by_coverage_from_ovs_counters():
+    """live5: Lightning ranked a one-IP drop first; approved, it stopped ~2% of a 50-source flood."""
+    st = live_with_flood()
+    port = lambda name, host, rx: {"port": name, "host": host, "rx_packets": rx, "tx_packets": 0, "rx_bytes": rx * 40, "tx_bytes": 0}
+    st.ingest_ovs("s1", 0.0, [port("s1-eth1", "victim", 0), port("s1-eth2", "attacker", 0), port("s1-eth4", "client", 0)])
+    st.ingest_ovs("s1", 2.0, [port("s1-eth1", "victim", 2996), port("s1-eth2", "attacker", 5992), port("s1-eth4", "client", 4)])
+    llm_plan = {**PLAN, "plan": [
+        {"rank": 1, "action": "LAB_OVS_DROP", "target": "10.99.0.104", "blast_radius": "low", "reversible": True, "ttl_s": 300,
+         "rationale": "drop the top source"},
+        {"rank": 2, "action": "LAB_OVS_PORT_DROP", "target": "attacker", "blast_radius": "medium", "reversible": True,
+         "ttl_s": 300, "rationale": "drop the attacker port"}]}
+    fake = FakeClient([call("submit_containment_plan", llm_plan)])
+    out = AgentAnalyst(client_factory=lambda: fake).run(AgentTools(incident(), live_state=st))
+    first = out["plan"][0]
+    assert (first["action"], first["target"]) == ("LAB_OVS_PORT_DROP", "attacker") and first["coverage"] > 0.99
+    ip = next(s for s in out["plan"] if s["action"] == "LAB_OVS_DROP")
+    assert ip["coverage"] < 0.1 and any(v.startswith("re-ranked:") for v in out["policy_violations"])

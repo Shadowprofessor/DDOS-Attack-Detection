@@ -150,6 +150,8 @@ export interface PlanStep {
   reversible: boolean;
   ttl_s: number;
   rationale: string;
+  /** share of the attack traffic this step would stop (computed by the platform, not the model) */
+  coverage?: number | null;
 }
 
 export interface AgentPlan {
