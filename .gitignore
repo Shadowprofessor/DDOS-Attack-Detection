@@ -67,3 +67,12 @@ docs/plans/ROADMAP.md
 
 # Personal share drafts (v6.1.0; never published)
 docs/SHARE.md
+
+# v6.1.1: untracked local dev/AI scaffolding (kept on disk)
+.gsd/
+.agent/
+.agents/
+adapters/
+.gemini/
+.playwright-mcp/
+.well-known/
