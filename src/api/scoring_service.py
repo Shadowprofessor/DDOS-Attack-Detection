@@ -903,7 +903,14 @@ async def score_flow(
             })
 
         proposed_aid = None
-        if is_attack:
+        try:  # v5.4.0 (live4): a destination that is under a live attack is the victim: never propose blocking it
+            from src.api.live_router import get_live_state
+            attacker_is_victim = attacker_ip in get_live_state().open
+        except Exception:
+            attacker_is_victim = False
+        if attacker_is_victim:
+            logger.info("Not proposing a block for %s: it is a victim under a live alert", log_safe(attacker_ip))
+        if is_attack and not attacker_is_victim:
             try:
                 is_campaign_scope = (is_aggregate_flood or (attack_family and "distributed" in attack_family.lower()) or campaign.flow_count >= 3)
 

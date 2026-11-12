@@ -166,6 +166,8 @@ class Bridge:
         if not from_start and self.enforce_status_path.exists():
             self.enforce_status_offset = self.enforce_status_path.stat().st_size
         self._relayed: set = set()
+        self.alerted: set = set()        # destinations that had a live L1 alert (victims)
+        self.busiest_dst: Optional[str] = None
         self._last_tick = None
 
     def log(self, event: str, **kw) -> None:
@@ -198,6 +200,9 @@ class Bridge:
         return n
 
     def _candidate(self, rec: dict) -> None:
+        # v5.4.0 (live4): never score a flow that a victim SENDS (replies): /score/flow proposed blocking the victim
+        if rec["src"] in self.alerted or rec["src"] == self.busiest_dst:
+            return
         if self.victims is None or rec["dst"] in self.victims:
             self.candidates.append(rec)
 
@@ -238,10 +243,18 @@ class Bridge:
                      late_packets=self.agg.late_packets)
             for w in batch:
                 self.recent[w["dst"]].append(w)
-                if w["packets"] or w["dst"] in self.recent:  # compact per-window record: MTTC needs the rate after approval
-                    self.log("victim_window", dst=w["dst"], start=w["start"], end=w["end"], pps=w["pps"],
-                             slow_conns=w.get("slow_conns", 0))
+            # MTTC needs the victim's rate after approval. One line per batch, victims only: live4 wrote a
+            # line for every destination's window and the post lag rose from ~2 s to ~7 s.
+            vic = [[w["dst"], w["end"], w["pps"]] for w in batch
+                   if w["dst"] in self.alerted or w["dst"] == self.busiest_dst]
+            if vic:
+                self.log("victim_windows", windows=vic)
+            if batch:
+                top = max(batch, key=lambda w: w["pps"])
+                if top["pps"] > 0:
+                    self.busiest_dst = top["dst"]
             if status == 200:
+                self.alerted.update(body.get("open_alerts", []))
                 for ep in body.get("alerts_opened", []):
                     self.log("alert", episode=ep, ack_at=t1)
                     opened.append(ep)

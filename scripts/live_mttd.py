@@ -98,7 +98,10 @@ def containment(manifest: dict, log: List[dict], victim: str) -> List[dict]:
     enforcer on the WSL2 clock (the measured skew is reported with the run)."""
     queued = {e["action_id"]: e for e in log if e.get("event") == "enforcement_queued" and e.get("op") == "apply"}
     applied = [e for e in log if e.get("event") == "enforcement_reported" and e.get("state") == "applied"]
-    wins = sorted((e for e in log if e.get("event") == "victim_window" and e.get("dst") == victim), key=lambda e: e["end"])
+    wins = [e for e in log if e.get("event") == "victim_window" and e.get("dst") == victim]  # v5.4.0 first format
+    wins += [{"dst": d, "end": end, "pps": pps} for e in log if e.get("event") == "victim_windows"
+             for d, end, pps in e.get("windows", []) if d == victim]  # batched format
+    wins.sort(key=lambda e: e["end"])
     out = []
     for a in applied:
         q = queued.get(a["action_id"]) or {}

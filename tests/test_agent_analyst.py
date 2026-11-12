@@ -149,3 +149,35 @@ def test_api_runs_agent_and_a_step_becomes_a_pending_proposal(c):
     assert client.post(f"/api/incidents/{inc['id']}/agent/propose/9", headers=H).status_code == 404
     assert client.post(f"/actions/approve/{aid}", headers={"X-Admin-Key": ADMIN}).status_code == 200
     assert mgr.lab_queue()[0]["action_id"] == aid  # only now does it reach the enforcer queue
+
+
+def test_demo_assist_proposes_top_lab_step_and_cannot_approve(c):
+    import importlib.util
+    from pathlib import Path as P
+
+    spec = importlib.util.spec_from_file_location("da", P(__file__).resolve().parent.parent / "scripts" / "demo_assist.py")
+    da = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(da)
+    client, mgr = c
+
+    class Http:
+        def get(self, path):
+            r = client.get(path, headers={"X-API-Key": KEY})
+            return r.status_code, r.json()
+
+        def post(self, path, body=None):
+            r = client.post(path, headers={"X-API-Key": KEY}, json=body or {})
+            return r.status_code, (r.json() if r.content else {})
+
+    client.post("/api/incidents", headers={"X-API-Key": KEY}, json={"title": "old incident", "severity": 2, "aggregate": SYN_AGG})
+    inc = client.post("/api/incidents", headers={"X-API-Key": KEY},
+                      json={"title": "[LIVE] L1 Rate-Based SYN Flood toward 10.99.0.10", "severity": 4, "aggregate": SYN_AGG}).json()
+    seen, msgs = set(), []
+    out = da.step(Http(), seen, log=msgs.append)
+    assert len(out) == 1 and out[0][0] == inc["id"]
+    a = mgr.get_action(out[0][1])
+    assert a["status"] == "PENDING" and a["action_type"] == "LAB_OVS_PORT_DROP" and "ADMIN must approve" in msgs[0]
+    assert da.step(Http(), seen, log=msgs.append) == []  # each incident handled once
+    assert Http().post(f"/actions/approve/{out[0][1]}")[0] == 403  # analyst key: approval refused
+    tree = __import__("ast").parse(P(spec.origin).read_text(encoding="utf-8"))
+    assert "approve" not in {getattr(n.func, "attr", "") for n in __import__("ast").walk(tree) if hasattr(n, "func")}
