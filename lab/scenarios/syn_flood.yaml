@@ -1,5 +1,6 @@
 id: syn_flood
 name: TCP SYN flood
+label: Syn
 attack: true
 mitre: [T1499.001, T1498.001]
 description: Spoofed-source SYN flood from lab attacker hosts toward the victim's port 443.

@@ -1,5 +1,6 @@
 id: land_attack
 name: LAND attack (source == destination)
+label: LAND
 attack: true
 mitre: [T1499.001]
 description: TCP SYN packets whose spoofed source IP and port equal the victim's own address and port, which can make a vulnerable stack reply to itself.

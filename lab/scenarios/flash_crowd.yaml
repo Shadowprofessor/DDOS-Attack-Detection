@@ -1,5 +1,6 @@
 id: flash_crowd
 name: Flash crowd (legitimate surge)
+label: Benign
 attack: false
 description: Many distinct clients fetching pages at a moderate rate, like a launch-day surge. Must NOT alert.
 profile: {protocol: http, rate_pps: 300, duration_s: 60, sources: 100, source_role: client, dst_port: 443, packet_size: 600}

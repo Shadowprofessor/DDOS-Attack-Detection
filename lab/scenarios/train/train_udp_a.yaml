@@ -1,0 +1,8 @@
+id: train_udp_a
+name: TRAIN UDP variant (udp, 700 pps, 10 sources)
+attack: true
+label: UDP
+mitre: [T1498.001]
+description: Labelled LAB-ONLY training variant for L2 (UDP); differs from the held-out canonical scenario.
+profile: {protocol: udp, rate_pps: 700, duration_s: 40, sources: 10, source_role: attacker, dst_port: 5353, packet_size: 256}
+expected: {incident: true, family: udp_reflection_amplification, layers: [L1, L2, L3], max_mttd_s: 30}

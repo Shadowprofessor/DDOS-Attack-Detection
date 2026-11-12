@@ -1,5 +1,6 @@
 id: http_low_and_slow
 name: HTTP low-and-slow (Slowloris-style)
+label: Slowloris
 attack: true
 mitre: [T1499.002]
 description: A few lab clients hold many HTTP connections open with partial headers to starve the victim's worker pool.

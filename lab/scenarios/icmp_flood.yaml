@@ -1,5 +1,6 @@
 id: icmp_flood
 name: ICMP echo flood
+label: ICMP
 attack: true
 mitre: [T1498.001]
 description: High-rate ICMP echo requests from lab attacker hosts toward the victim (classic ping flood).

@@ -1,0 +1,8 @@
+id: train_syn_a
+name: TRAIN Syn variant (tcp_syn, 600 pps, 20 sources)
+attack: true
+label: Syn
+mitre: [T1499.001, T1498.001]
+description: Labelled LAB-ONLY training variant for L2 (Syn); differs from the held-out canonical scenario.
+profile: {protocol: tcp_syn, rate_pps: 600, duration_s: 40, sources: 20, source_role: attacker, dst_port: 80, packet_size: 60}
+expected: {incident: true, family: syn_flood, layers: [L1, L2, L3], max_mttd_s: 30}

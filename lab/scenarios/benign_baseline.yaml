@@ -1,5 +1,6 @@
 id: benign_baseline
 name: Benign baseline
+label: Benign
 attack: false
 description: Mixed low-rate client traffic to the victim web service; should never open an incident.
 profile: {protocol: http, rate_pps: 50, duration_s: 60, sources: 5, source_role: client, dst_port: 80, packet_size: 400}

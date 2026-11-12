@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from lab.library import Scenario, load_scenarios
+from lab.library import CATALOGS, Scenario, load_scenarios
 from lab.runner import MockRunner
 from lab.safety import (EnvReport, KillSwitch, LabScope, SafetyError, check_target, default_probe, load_scope,
                         source_addresses)
@@ -214,9 +214,11 @@ def main() -> None:  # pragma: no cover - runs only inside the lab
 
     ap = argparse.ArgumentParser(description="Gated LAB-ONLY traffic generator (Mininet host)")
     ap.add_argument("--scenario", required=True)
+    ap.add_argument("--catalog", choices=sorted(CATALOGS), default="main")
+    ap.add_argument("--seed", type=int, default=1)
     args = ap.parse_args()
-    sc = load_scenarios()[args.scenario]
-    rep = GatedTrafficRunner(load_scope()).run(sc)
+    sc = load_scenarios(CATALOGS[args.catalog])[args.scenario]
+    rep = GatedTrafficRunner(load_scope(), seed=args.seed).run(sc)
     print(json.dumps(rep.__dict__))
 
 
