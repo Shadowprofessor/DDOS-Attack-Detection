@@ -67,4 +67,11 @@ describe("live model", () => {
     const s = fromSnapshot({ server_time: 0, victims: { "__proto__": [w(1, 1)] } as never, open_alerts: [], episodes: [], flows: [], ovs: [] });
     expect(s.victims.size).toBe(0);
   });
+
+  it("records lab enforcement events", () => {
+    const m = applyEvent(empty(), { type: "live.enforcement", action_id: "a1", state: "applied", target: "10.99.0.105",
+      action_type: "LAB_OVS_DROP", victim_ip: "10.99.0.10", ts: 12, detail: "drop", approved_at: 10 });
+    expect(m.enforcement[0]?.state).toBe("applied");
+    expect(applyEvent(m, { type: "live.reset" }).enforcement).toEqual([]);
+  });
 });

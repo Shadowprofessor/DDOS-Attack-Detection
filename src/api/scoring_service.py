@@ -82,6 +82,19 @@ _ENV_NAME = str(config.get("environment") or os.environ.get("DDOS_ENV", "lab")).
 _IS_PROD_LIKE = _ENV_NAME in ("production", "staging", "prod")
 
 
+
+def _in_lab_scope(ip) -> bool:
+    """True if `ip` is inside the lab's allowed networks (lab/lab_scope.yaml)."""
+    try:
+        import ipaddress
+
+        from lab.containment import _scope
+
+        addr = ipaddress.ip_address(str(ip))
+        return any(addr.version == n.version and addr in n for n in _scope().networks)
+    except Exception:
+        return False
+
 def _env_key_set(var_name: str) -> set[str]:
     return {k.strip() for k in os.environ.get(var_name, "").split(",") if k.strip()}
 
@@ -535,6 +548,14 @@ from src.api.live_router import router as live_router  # noqa: E402  v5.2.0 live
 
 app.include_router(live_router)
 
+from src.api.lab_router import router as lab_router  # noqa: E402  v5.4.0 lab enforcer hand-off
+
+app.include_router(lab_router)
+
+from src.api.agent_router import router as agent_router  # noqa: E402  v5.4.0 agentic analyst
+
+app.include_router(agent_router)
+
 from src.api.session_router import router as session_router  # noqa: E402  v4.3.0 SOC web app
 from src.web import app_server as _soc_app  # noqa: E402
 
@@ -895,7 +916,21 @@ async def score_flow(
             })
 
         proposed_aid = None
-        if is_attack:
+        try:  # v5.4.0 (live4): a destination that is under a live attack is the victim: never propose blocking it
+            from src.api.live_router import get_live_state
+            attacker_is_victim = attacker_ip in get_live_state().open
+        except Exception:
+            attacker_is_victim = False
+        if attacker_is_victim:
+            logger.info("Not proposing a block for %s: it is a victim under a live alert", log_safe(attacker_ip))
+        # v6.0.0 (live7): lab hosts are contained on the lab switch (the agent's LAB_OVS_* plan). A host-level
+        # iptables proposal for a lab address does nothing on this machine and crowded the Approvals page, so
+        # the admin approved it instead of the lab step. Detection and the incident are unchanged.
+        lab_source = _in_lab_scope(attacker_ip)
+        if lab_source:
+            logger.info("Not proposing a host block for lab address %s: lab containment goes via the agent plan",
+                        log_safe(attacker_ip))
+        if is_attack and not attacker_is_victim and not lab_source:
             try:
                 is_campaign_scope = (is_aggregate_flood or (attack_family and "distributed" in attack_family.lower()) or campaign.flow_count >= 3)
 

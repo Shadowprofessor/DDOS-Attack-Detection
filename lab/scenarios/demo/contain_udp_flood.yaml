@@ -1,0 +1,8 @@
+id: contain_udp_flood
+name: "Containment demo - UDP flood (120 s)"
+label: UDP
+attack: true
+mitre: [T1498.001]
+description: LAB-ONLY v5.4.0 containment demo; long enough for a human to approve a plan mid-attack.
+profile: {protocol: udp, rate_pps: 1500, duration_s: 120, sources: 20, source_role: attacker, dst_port: 9999, packet_size: 512}
+expected: {incident: true, family: udp_reflection_amplification, layers: [L1, L3], max_mttd_s: 30}

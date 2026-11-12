@@ -20,6 +20,8 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from src.obs.logging import log_safe
 
+from src.mitigation.lab_containment import clamp_ttl, cookie_for, is_lab_type, ovs_command, validate_target  # noqa: E402
+
 logger = logging.getLogger("MitigationManager")
 
 DEFAULT_STORAGE_PATH = os.path.abspath(
@@ -114,11 +116,19 @@ class PendingActionManager:
         dossier: Optional[dict] = None,
         per_model_breakdown: Optional[dict] = None,
         consensus_tier: Optional[str] = None,
+        ttl_s: Optional[int] = None,
     ) -> str:
         """
         Create and record a PROPOSED mitigation action.
         NEVER executes commands automatically.
         """
+        lab = None
+        if is_lab_type(action_type):  # v5.4.0 lab containment: refuse a bad target before it is even proposed
+            ok, why = validate_target(action_type, attacker_ip)
+            if not ok:
+                raise ValueError(f"lab containment target refused: {why}")
+            ttl_s = clamp_ttl(ttl_s)
+            lab = {"state": "proposed", "ttl_s": ttl_s}
         with self._lock:
             self._load_from_disk()
             action_id = str(uuid.uuid4())[:8]
@@ -142,6 +152,10 @@ class PendingActionManager:
                 "per_model_breakdown": per_model_breakdown or {},
                 "consensus_tier": consensus_tier,
             }
+            if lab is not None:
+                action["lab"] = lab
+                action["ttl_s"] = lab["ttl_s"]
+                action["proposed_commands"] = [ovs_command(action_type, attacker_ip, lab["ttl_s"], action_id)]
 
             if datapath is not None:
                 self._ephemeral_contexts[action_id] = {"datapath": datapath}
@@ -222,8 +236,8 @@ class PendingActionManager:
             return {
                 action["attacker_ip"]
                 for action in self._pending_actions.values()
-                if action.get("status") == "EXECUTED"
-            }
+                if action.get("status") == "EXECUTED" and not is_lab_type(action.get("action_type"))
+            }  # lab actions are enforced on the Mininet switch, not by skipping scoring here
 
     def is_ip_blocked(self, ip: str) -> bool:
         """Check whether an IP has an EXECUTED (approved) mitigation action.
@@ -235,7 +249,8 @@ class PendingActionManager:
         with self._lock:
             self._load_from_disk()
             for action in self._pending_actions.values():
-                if action.get("attacker_ip") == ip and action.get("status") == "EXECUTED":
+                if (action.get("attacker_ip") == ip and action.get("status") == "EXECUTED"
+                        and not is_lab_type(action.get("action_type"))):
                     return True
             return False
 
@@ -320,6 +335,11 @@ class PendingActionManager:
         attacker_ip = action.get("attacker_ip")
         action_id = action.get("action_id")
 
+        if is_lab_type(action_type):  # the lab enforcer removes the OVS rule (its hard_timeout also would)
+            lab = action.setdefault("lab", {})
+            lab.update(state="remove_requested", remove_requested_at=time.time())
+            return {"success": True, "message": f"Removal of lab rule {action_id} queued for the lab enforcer."}
+
         if action_type == "OPENFLOW_DROP":
             dp = self._ephemeral_contexts.get(action_id, {}).get("datapath")
             if dp and hasattr(dp, "ofproto") and hasattr(dp, "ofproto_parser"):
@@ -352,6 +372,56 @@ class PendingActionManager:
         logger.info("Reverted approved action %s (%s) for %s", log_safe(action_id), log_safe(action_type), log_safe(attacker_ip))
         return {"success": True, "message": f"Action {action_id} reverted (logged)."}
 
+    # ------------------------------------------------------------------ v5.4.0 lab enforcer hand-off
+    def lab_queue(self) -> List[dict]:
+        """Approved lab actions the enforcer still has to apply or remove (read-only view)."""
+        with self._lock:
+            self._load_from_disk()
+            out, changed, now = [], False, time.time()
+            for a in self._pending_actions.values():
+                lab = a.get("lab") or {}
+                if not is_lab_type(a.get("action_type")) or a.get("status") not in ("EXECUTED", "ROLLED_BACK"):
+                    continue
+                # v5.4.0 (live5): an approval is valid for its TTL only. Approved but never applied within it
+                # (e.g. no enforcer running) -> expired_unapplied, never handed to a later enforcer.
+                if lab.get("state") == "queued" and (a.get("approved_at") or now) + float(lab.get("ttl_s") or 300) < now:
+                    lab.update(state="expired_unapplied", expired_unapplied_at=now)
+                    lab.setdefault("log", []).append({"state": "expired_unapplied", "ts": now,
+                                                      "detail": "approved but not applied within its TTL"})
+                    changed = True
+                    continue
+                op = {"queued": "apply", "remove_requested": "remove"}.get(lab.get("state"))
+                if op:
+                    out.append({"action_id": a["action_id"], "op": op, "action_type": a["action_type"],
+                                "target": a["attacker_ip"], "victim_ip": a.get("victim_ip"), "ttl_s": lab.get("ttl_s"),
+                                "cookie": lab.get("cookie"), "approved_at": a.get("approved_at"),
+                                "approver": a.get("approver")})
+            if changed:
+                self._save_to_disk()
+            return out
+
+    LAB_TRANSITIONS = {"queued": {"applied", "refused", "failed"},
+                       "applied": {"expired", "removed"},
+                       "remove_requested": {"removed", "expired", "failed"}}
+
+    def record_lab_enforcement(self, action_id: str, state: str, detail: str = "",
+                               ts: Optional[float] = None) -> Tuple[bool, str]:
+        """The enforcer reports what it did. This records facts; it can never create or approve a block."""
+        with self._lock:
+            self._load_from_disk()
+            a = self._pending_actions.get(action_id)
+            if not a or not is_lab_type(a.get("action_type")):
+                return False, "unknown lab action"
+            lab = a.setdefault("lab", {})
+            cur = lab.get("state")
+            if state not in self.LAB_TRANSITIONS.get(cur, set()):
+                return False, f"illegal lab state change {cur} -> {state}"
+            lab["state"] = state
+            lab[f"{state}_at"] = float(ts) if ts else time.time()
+            lab.setdefault("log", []).append({"state": state, "ts": lab[f"{state}_at"], "detail": str(detail)[:300]})
+            self._save_to_disk()
+            return True, state
+
     def clear(self):
         """Reset the queue (primarily for testing)."""
         with self._lock:
@@ -379,6 +449,26 @@ class PendingActionManager:
             "🔧 [EXECUTING APPROVED ACTION %s] %s — %s → %s",
             action_id, action_type, attacker_ip, victim_ip
         )
+
+        if is_lab_type(action_type):
+            # v5.4.0: nothing runs on this host. The approved rule is QUEUED; the lab enforcer (WSL2, root)
+            # re-checks the target and installs it on the Mininet switch with hard_timeout = TTL.
+            ok, why = validate_target(action_type, attacker_ip)
+            if not ok:
+                return {"success": False, "message": f"lab target refused at approval: {why}",
+                        "executed": [{"command": c, "status": "REFUSED"} for c in commands]}
+            # v6.0.0 (live6): a lab proposal is only valid for its TTL. An old proposal from an earlier run
+            # (still PENDING on the Approvals page) must not block hosts in the next run.
+            ttl = clamp_ttl(action.get("ttl_s") or (action.get("lab") or {}).get("ttl_s"))
+            if action.get("proposed_at") and action["proposed_at"] + ttl < time.time():
+                return {"success": False, "message": f"lab proposal is older than its TTL ({ttl} s); "
+                        "propose it again from the incident if it is still needed",
+                        "executed": [{"command": c, "status": "REFUSED_STALE"} for c in commands]}
+            lab = action.setdefault("lab", {})
+            lab.update(state="queued", queued_at=time.time(), ttl_s=clamp_ttl(action.get("ttl_s")),
+                       cookie=hex(cookie_for(action_id)))
+            return {"success": True, "message": f"Action {action_id} approved; queued for the lab enforcer ({why}).",
+                    "executed": [{"command": c, "status": "QUEUED_FOR_LAB_ENFORCER"} for c in commands]}
 
         if action_type == "OPENFLOW_DROP":
             ephemeral = self._ephemeral_contexts.get(action_id, {})

@@ -61,7 +61,7 @@ export function AnalystPage() {
             </select>
           </label>
           {incidentId && (
-            a ? (
+            a?.analysis ? (
               <dl className="kv small">
                 <dt>Stored analysis</dt><dd>{a.analysis.attack_type}</dd>
                 <dt>Source</dt><dd className="mono">{a.source}{a.cached ? " · cached" : ""}</dd>

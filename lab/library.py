@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 SCENARIO_DIR = Path(__file__).resolve().parent / "scenarios"
 # v5.3.0: "main" = the canonical scenarios (DEV runs 2/3 and the held-out run4); "train" = labelled
 # variants at other rates/sources/ports, used only to train L2. Same schema, same safety caps.
-CATALOGS = {"main": SCENARIO_DIR, "train": SCENARIO_DIR / "train"}
+CATALOGS = {"main": SCENARIO_DIR, "train": SCENARIO_DIR / "train", "demo": SCENARIO_DIR / "demo"}  # demo: v5.4.0 containment
 LABELS = ("Benign", "Syn", "UDP", "NTP", "DNS", "ICMP", "ACK", "RST", "LAND", "Slowloris")
 MITRE_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
 

@@ -172,6 +172,18 @@ class LLMClient:
         obs_metrics.LLM_REQUESTS.inc(model=model, outcome="ok" if args is not None else "no_tool_call")
         return args, data.get("_latency_s", 0.0)
 
+    def chat_tools(self, model: str, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]],
+                   tool_choice: Any = "auto") -> Dict[str, Any]:
+        """v5.4.0 agent step: let the model call one of `tools` (or force one). Returns the raw assistant
+        message ({"content", "tool_calls"}); the caller runs the tool and continues the conversation."""
+        body = self._base_body(model, messages)
+        body["tools"] = tools
+        body["tool_choice"] = tool_choice
+        data = self._post(model, body)
+        msg = (data.get("choices") or [{}])[0].get("message") or {}
+        obs_metrics.LLM_REQUESTS.inc(model=model, outcome="tool_calls" if msg.get("tool_calls") else "text")
+        return msg
+
     def chat(self, model: str, messages: List[Dict[str, Any]]) -> str:
         data = self._post(model, self._base_body(model, messages))
         obs_metrics.LLM_REQUESTS.inc(model=model, outcome="ok")

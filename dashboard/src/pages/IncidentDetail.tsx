@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import {
-  ANALYST_TRANSITIONS, api, ApiError, json, type AnalysisResult, type Explanation, type IncidentDetail, type Playbook,
+  ANALYST_TRANSITIONS, api, ApiError, json, type AgentPlan, type AnalysisResult, type Explanation, type IncidentDetail, type Playbook,
 } from "../api/client";
 import { isAdmin, useAuth } from "../auth/store";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -54,8 +54,49 @@ function whyItems(inc: IncidentDetail): Explanation[] {
   return out;
 }
 
+/** v5.4.0: the agent's ranked containment plan. A lab step can be PROPOSED here; an admin approves it. */
+function AgentPlanPanel({ plan, onPropose, busy }: { plan: AgentPlan; onPropose: (rank: number) => void; busy: boolean }) {
+  return (
+    <div className="ai">
+      <p className="ai-label">
+        Agent plan ({plan.source}{plan.latency_ms ? `, ${Math.round(plan.latency_ms)} ms` : ""}) — recommendations only.
+        Proposing a step creates a PENDING action; an admin must approve it on Approvals.
+      </p>
+      <dl className="kv">
+        <dt>Assessed attack</dt><dd>{plan.attack_type} <span className="muted small">(confidence {plan.confidence.toFixed(2)}{plan.mitre_ids.length ? ` · ${plan.mitre_ids.join(", ")}` : ""})</span></dd>
+        <dt>Why</dt><dd className="reason">{plan.reason}</dd>
+        <dt>False positive?</dt><dd>{plan.false_positive_assessment}</dd>
+        <dt>Tools used</dt><dd className="mono small">{plan.tool_trace.map((t) => t.tool).join(" → ") || "rules (no LLM)"}</dd>
+      </dl>
+      {plan.degraded_reason && <p className="muted small">Rule agent used: {plan.degraded_reason}</p>}
+      {plan.policy_violations.length > 0 && (
+        <p className="warn small">Policy removed: {plan.policy_violations.join("; ")}</p>
+      )}
+      <div className="table-wrap"><table className="incidents">
+        <thead><tr><th>#</th><th>Action</th><th>Target</th><th>Stops</th><th>Blast radius</th><th>Reversible</th><th>TTL</th><th>Why</th><th></th></tr></thead>
+        <tbody>{plan.plan.map((s) => (
+          <tr key={s.rank}>
+            <td>{s.rank}</td><td className="mono small">{s.action}</td><td className="mono">{s.target}</td>
+            <td className={s.coverage !== null && s.coverage !== undefined && s.coverage < 0.5 ? "warn" : ""}>
+              {s.coverage === null || s.coverage === undefined ? "—" : `~${Math.round(s.coverage * 100)}% of the attack`}
+            </td>
+            <td className={`blast-${s.blast_radius}`}>{s.blast_radius}</td><td>{s.reversible ? "yes" : "no"}</td>
+            <td>{s.ttl_s} s</td><td className="small">{s.rationale}</td>
+            <td>{s.action.startsWith("LAB_") ? (
+              <button type="button" className="btn small" disabled={busy} onClick={() => onPropose(s.rank)}>Propose…</button>
+            ) : <span className="muted small">advice</span>}</td>
+          </tr>))}
+        </tbody>
+      </table></div>
+      <h3>Evidence</h3>
+      <ul>{plan.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
+    </div>
+  );
+}
+
 function AnalysisPanel({ result }: { result: AnalysisResult }) {
   const a = result.analysis;
+  if (!a) return null;
   return (
     <div className="ai">
       <p className="ai-label">AI recommendation — review before acting. Nothing here has been executed.</p>
@@ -150,6 +191,19 @@ export function IncidentDetailPage() {
   const analyze = useMutation({
     mutationFn: () => api(`${base}/analyze`, { method: "POST" }),
     onSuccess: () => done("Analysis updated."),
+    onError: fail,
+  });
+  const runAgent = useMutation({
+    mutationFn: () => api(`${base}/agent`, { method: "POST" }),
+    onSuccess: () => done("Agent plan updated."),
+    onError: fail,
+  });
+  const proposeStep = useMutation({
+    mutationFn: (rank: number) => api<{ action_id: string }>(`${base}/agent/propose/${rank}`, { method: "POST" }),
+    onSuccess: (r) => {
+      done(`Proposed ${r.action_id}: PENDING until an admin approves it on Approvals.`);
+      void qc.invalidateQueries({ queryKey: ["approvals"] });
+    },
     onError: fail,
   });
   const reported = useMutation({
@@ -257,16 +311,29 @@ export function IncidentDetailPage() {
       </div>
 
       <WhyFlagged items={whyItems(inc)} />
+      {agg && (
+        <div className="card">
+          <div className="row spread">
+            <h2>AI containment plan</h2>
+            <button type="button" className="btn" onClick={() => runAgent.mutate()} disabled={runAgent.isPending}>
+              {runAgent.isPending ? "Agent working…" : inc.analysis?.agent ? "Re-run the agent" : "Ask the agent"}
+            </button>
+          </div>
+          {inc.analysis?.agent ? (
+            <AgentPlanPanel plan={inc.analysis.agent} onPropose={(r) => proposeStep.mutate(r)} busy={proposeStep.isPending} />
+          ) : <p className="muted">No plan yet. The agent only reads data and recommends; it cannot block anything.</p>}
+        </div>
+      )}
       <div className="card">
         <div className="row spread">
           <h2>AI analyst</h2>
           {agg && (
             <button type="button" className="btn" onClick={() => analyze.mutate()} disabled={analyze.isPending}>
-              {analyze.isPending ? "Analysing…" : inc.analysis ? "Re-run analysis" : "Run analysis"}
+              {analyze.isPending ? "Analysing…" : inc.analysis?.analysis ? "Re-run analysis" : "Run analysis"}
             </button>
           )}
         </div>
-        {inc.analysis ? <AnalysisPanel result={inc.analysis} /> : <p className="muted">No analysis yet.</p>}
+        {inc.analysis?.analysis ? <AnalysisPanel result={inc.analysis} /> : <p className="muted">No analysis yet.</p>}
       </div>
 
       {agg && (

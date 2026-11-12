@@ -149,3 +149,9 @@ def test_live_router_cannot_approve_or_execute():
     names = {n.attr if isinstance(n, ast.Attribute) else getattr(n, "id", "") for n in ast.walk(tree)
              if isinstance(n, (ast.Attribute, ast.Name))}
     assert not names & {"approve", "execute", "propose", "subprocess", "system"}
+
+
+def test_ws_live_client_that_leaves_during_auth_does_not_crash(c):
+    with c.websocket_connect("/ws/live") as ws:
+        ws.close()  # gone before sending an auth message
+    assert c.get("/api/live/state", headers=H).status_code == 200

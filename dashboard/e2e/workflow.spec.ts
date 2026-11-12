@@ -85,10 +85,11 @@ test("admin approves the requested action and sees the rollback countdown", asyn
   await dlg.getByRole("button", { name: "Approve and enforce" }).click();
   await expect(page.getByRole("status").filter({ hasText: /Approve: .* done/ })).toBeVisible();
   // scheduler syncs within ~5 s and schedules the 10-minute auto-rollback
-  await expect(page.getByRole("article", { name: /Active action/ }).getByText(/Auto-rollback in/)).toBeVisible({ timeout: 20_000 });
+  // scope to this test's action: other specs (e.g. workflow-containment) may leave their own active action
+  const active = page.getByRole("article", { name: /Active action/ }).filter({ hasText: "10.10.0.21" });
+  await expect(active.getByText(/Auto-rollback in/)).toBeVisible({ timeout: 20_000 });
 
   // keyboard-only extend with a reason
-  const active = page.getByRole("article", { name: /Active action/ }).first();
   await active.getByRole("button", { name: "Extend 10 min…" }).focus();
   await page.keyboard.press("Enter");
   await page.keyboard.type("Attack still ongoing upstream");

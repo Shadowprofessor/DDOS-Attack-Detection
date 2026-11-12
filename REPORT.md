@@ -1,4 +1,4 @@
-# DDoS Detection & Mitigation Platform: Technical Report (v5.3.0)
+# DDoS Detection & Mitigation Platform: Technical Report (v5.4.0)
 
 Author: Sachit Sharma. Licence: MIT.
 
@@ -36,6 +36,10 @@ code-enforced containment.
   and a flash crowd tripped L1 (§5.3).
 - **Live (v5.2.0):** an attack shows on the SOC website 3.8–5.8 s after it starts. Every alert and
   incident now carries a plain-language reason with its numbers (v5.3.0).
+- **Live containment (v5.4.0, live8):** an admin approved the agent plan's port drop. It was on the
+  lab switch 0.61 s later, and the victim's traffic was below 100 pps **2.63 s after approval**
+  (2,997 → 0 pps). An earlier single-IP drop stopped only 2% (live5), so the platform now ranks steps
+  by measured coverage (§5.6).
 - **No model or LLM output can block traffic.** Every mitigation is a PENDING proposal until an
   admin approves it. This is enforced by an AST test. Lab egress containment was measured: 3/3
   probes dropped.
@@ -211,6 +215,40 @@ held-out run.
 **Caveat:** one generator and one network produced train, DEV and held-out, so the lab numbers are
 an upper bound for real traffic.
 
+### 5.6 Agent triage and live containment (v5.4.0)
+
+**Triage vs lab ground truth** (`docs/eval/triage/results.json`). There are 10 attack scenarios and
+2 benign ones. DEV and held-out give the same numbers:
+
+| | Rules | Lightning | ML (L2) |
+|---|---:|---:|---:|
+| Attack type correct | **10/10** | 8/10 | 7/10 |
+| Family correct | **10/10** | 7/10 | 8/10 |
+| False alarms | 0/2 | 0/2 | 0/2 |
+
+Lightning's errors: NTP reflection → "Benign / flash crowd", LAND → "SYN flood", novel mix → wrong
+family. The rules were tuned on DEV, so their DEV score is not independent; held-out is.
+
+**Live runs**
+- Each run is two 120 s floods, SYN then UDP, from about 50 spoofed sources on the attacker port.
+- Timings are seconds from attack start.
+- MTTC = approval → victim-port rate below 100 pps for 2 consecutive OVS samples, counted only while
+  the attack runs (`docs/eval/live/`).
+
+| Run | Alert on website, SYN / UDP | Lightning's name for the UDP flood | Containment |
+|---|---|---|---|
+| live4 | 5.16 / 2.66 s | "SYN flood" (wrong) | none requested |
+| live5 | 5.52 / 8.55 s | "SYN flood" (wrong) | single-IP drop: applied in 0.58 s, stopped **2%**; MTTC not reached |
+| live6 | — | — | lost: the bridge exited because the server was not up (fixed) |
+| live7 | 3.49 / 3.04 s | UDP flood (right) | the wrong approvals were made (host-level items); none applied (fixed) |
+| live8 | 4.89 / (pre-contained) | "SYN flood" (wrong) | **port drop: applied in 0.61 s, MTTC 2.63 s, 2,997 → 0 pps (100%)** |
+
+- In live8 the 300 s port rule was still active when the UDP flood started, so that flood never
+  reached the victim. It was detected about 1.5 s after the rule expired.
+- Attack start → contained was 41.16 s, of which about 38 s was the human reading and approving.
+- **Live MTTD to the website across 7 floods:** 2.66–8.55 s, median 4.89 s. The bridge's post lag
+  is about 3 s at p50.
+
 ### 5.4 Threat hunts (v4.7.0)
 Two hypothesis-driven rules: H1 low-rate distributed reflection, H2 distributed slow-read. Each
 has positive and negative tests. Run over the ~221k lab flows they found **nothing**, which is
@@ -251,6 +289,10 @@ crowd. They have not been validated on positive traffic yet.
      crowd"**. It named the SYN and ICMP floods correctly.
    - This is a measured triage error, not fixed by hard-coding.
    - The rule analyst's verdict is shown next to the LLM's on every incident (v5.3.0).
+   - **Live, v5.4.0:** it called the UDP flood a "SYN flood" in 3 of 4 live runs (live4, live5,
+     live8), and named every SYN flood correctly. Its plans also proposed weak single-IP drops and
+     once put an IP address in a port-drop step. The platform's coverage check, not the model,
+     picks the effective step.
 9. The LLM provider is not reliable enough to depend on. At release time the live NVIDIA NIM
    check timed out (60 s) after an earlier HTTP 503. The platform falls back to the deterministic
    rule analyst, which is why no safety property depends on the LLM.

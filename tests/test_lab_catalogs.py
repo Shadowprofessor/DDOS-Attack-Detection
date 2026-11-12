@@ -54,3 +54,10 @@ def test_seed_changes_the_random_stream():
         return [build_packet("tcp_syn", "10.99.0.100", "10.99.0.10", 443, 60, rng).sport for _ in range(5)]
 
     assert ports(1001) == ports(1001) and ports(1001) != ports(4004)
+
+
+def test_every_catalogue_parses():
+    """v5.4.0: the demo catalogue had a YAML error (an unquoted colon) that only failed in the lab run."""
+    for name, d in CATALOGS.items():
+        assert load_scenarios(d), name
+    assert set(load_scenarios(CATALOGS["demo"])) == {"contain_syn_flood", "contain_udp_flood"}
