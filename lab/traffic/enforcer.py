@@ -86,7 +86,7 @@ class Enforcer:
         self._log(self.log_path, {"event": state, "action_id": aid, "detail": detail[:300]})
 
     def port_numbers(self) -> Dict[str, str]:
-        if self._ports is None:
+        if not self._ports:  # retry until the switch exists (the enforcer may start before Mininet)
             from lab.traffic.ovs_poll import parse_show
 
             self._ports = {name: num for num, name in parse_show(self.run(["ovs-ofctl", "show", self.switch]).stdout).items()}
@@ -180,6 +180,12 @@ def main() -> None:  # pragma: no cover - needs root + OVS
         raise SystemExit("refusing: not WSL2")
     run = Path(args.run)
     run.mkdir(parents=True, exist_ok=True)
+    import signal
+
+    def _stop(signum, frame):  # SIGTERM from lab/live_demo.sh's trap: run the cleanup below
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _stop)
     e = Enforcer(run, switch=args.switch)
     print(f"enforcer watching {e.queue_path} (kill switch: {e.kill_file})", flush=True)
     try:

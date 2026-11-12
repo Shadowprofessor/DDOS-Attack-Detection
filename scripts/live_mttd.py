@@ -88,6 +88,55 @@ def _cell(v, unit="") -> str:
     return "not detected" if v is None else f"{v}{unit}"
 
 
+BELOW_PPS = 100.0  # L1 warning threshold: "traffic below threshold"
+HOLD_WINDOWS = 3   # ...for this many consecutive 1 s windows
+
+
+def containment(manifest: dict, log: List[dict], victim: str) -> List[dict]:
+    """v5.4.0 MTTC per applied lab rule: approval -> applied -> victim traffic below BELOW_PPS for
+    HOLD_WINDOWS consecutive windows. Approval is on the platform (Windows) clock; windows and the
+    enforcer on the WSL2 clock (the measured skew is reported with the run)."""
+    queued = {e["action_id"]: e for e in log if e.get("event") == "enforcement_queued" and e.get("op") == "apply"}
+    applied = [e for e in log if e.get("event") == "enforcement_reported" and e.get("state") == "applied"]
+    wins = sorted((e for e in log if e.get("event") == "victim_window" and e.get("dst") == victim), key=lambda e: e["end"])
+    out = []
+    for a in applied:
+        q = queued.get(a["action_id"]) or {}
+        approved, t_apply = q.get("approved_at"), a.get("ts")
+        if t_apply is None:
+            continue
+        run = next((r for r in manifest.get("runs", []) if r["started_at"] <= t_apply <= r["ended_at"] + 5), None)
+        after = [w for w in wins if w["end"] > t_apply]
+        below = None
+        for i in range(len(after)):
+            seg = after[i:i + HOLD_WINDOWS]
+            if len(seg) == HOLD_WINDOWS and all(w["pps"] < BELOW_PPS for w in seg):
+                below = seg[0]
+                break
+        out.append({
+            "action_id": a["action_id"], "target": q.get("target"), "scenario": run["scenario"] if run else None,
+            "approval_to_applied_s": round(t_apply - approved, 2) if approved else None,
+            "mttc_s": round(below["end"] - approved, 2) if below and approved else None,
+            "applied_to_below_s": round(below["end"] - t_apply, 2) if below else None,
+            "attack_start_to_contained_s": round(below["end"] - run["started_at"], 2) if below and run else None,
+            "pps_before": max((w["pps"] for w in wins if t_apply - 5 <= w["end"] <= t_apply), default=None),
+            "pps_after": below["pps"] if below else None,
+        })
+    return out
+
+
+def render_containment(rows: List[dict]) -> str:
+    if not rows:
+        return "No lab containment was applied in this run."
+    cell = lambda v: "not reached" if v is None else f"{v}"  # noqa: E731
+    lines = ["| Scenario | Rule target | Approval -> applied (s) | **MTTC: approval -> below 100 pps (s)** | "
+             "Attack start -> contained (s) | pps before -> after |", "|---|---|---:|---:|---:|---|"]
+    for r in rows:
+        lines.append(f"| `{r['scenario']}` | {r['target']} | {cell(r['approval_to_applied_s'])} | {cell(r['mttc_s'])} | "
+                     f"{cell(r['attack_start_to_contained_s'])} | {cell(r['pps_before'])} -> {cell(r['pps_after'])} |")
+    return "\n".join(lines)
+
+
 def render(r: dict, run_name: str) -> str:
     c = r["clock"]
     lines = [f"Live run `{run_name}`, victim `{r['victim']}`. Seconds from scenario start (WSL2 clock).",
@@ -116,28 +165,28 @@ def render(r: dict, run_name: str) -> str:
 
 
 def main() -> None:  # pragma: no cover - CLI
-    from lab.library import load_scenarios
+    from lab.library import CATALOGS, load_scenarios
     from lab.safety import load_scope
 
     run = Path(sys.argv[1])
     manifest = json.loads((run / "manifest.json").read_text())
     log = [json.loads(x) for x in (run / "live_bridge.jsonl").read_text().splitlines() if x.strip()]
-    scs = load_scenarios()
+    scs = {}
+    for cat in CATALOGS.values():  # main, train and demo scenarios
+        scs.update(load_scenarios(cat))
     victim = str(load_scope().hosts["victim"])
     offline = {}
     if OFFLINE.is_file():
         offline = {m["scenario"]: m for m in json.loads(OFFLINE.read_text()).get("mttd", [])}
     r = analyse(manifest, log, victim, {k: v.attack for k, v in scs.items()}, offline)
     r["run"] = run.name
-    OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    OUT_JSON.write_text(json.dumps(r, indent=2), encoding="utf-8")
-    md = render(r, run.name)
-    doc = DOC.read_text(encoding="utf-8")
-    if MARK_A in doc:
-        doc = doc[:doc.index(MARK_A) + len(MARK_A)] + "\n" + md + "\n" + doc[doc.index(MARK_B):]
-        with DOC.open("w", encoding="utf-8", newline="\n") as fh:
-            fh.write(doc)
+    r["containment"] = containment(manifest, log, victim)
+    out = OUT_JSON.parent / f"{run.name}.json"  # one file per run; docs are written by hand from these
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(r, indent=2), encoding="utf-8")
+    md = render(r, run.name) + "\n\n**Containment (v5.4.0)**\n\n" + render_containment(r["containment"])
     print(md)
+    print("wrote", out)
 
 
 if __name__ == "__main__":

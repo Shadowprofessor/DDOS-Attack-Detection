@@ -1,0 +1,8 @@
+id: contain_syn_flood
+name: Containment demo: SYN flood (120 s)
+label: Syn
+attack: true
+mitre: [T1499.001, T1498.001]
+description: LAB-ONLY v5.4.0 containment demo; long enough for a human to approve a plan mid-attack.
+profile: {protocol: tcp_syn, rate_pps: 1500, duration_s: 120, sources: 50, source_role: attacker, dst_port: 443, packet_size: 60}
+expected: {incident: true, family: syn_flood, layers: [L1, L3], max_mttd_s: 30}

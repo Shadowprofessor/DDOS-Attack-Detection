@@ -42,3 +42,17 @@ def test_join_reports_detections_false_positives_and_not_detected():
     assert "| `icmp_flood` | yes | not detected | not detected |" in md
     assert "**false positive** 4.0" in md and "no alert (correct)" in md
     assert "| none (correct) | **false positive** 21.5 |" in md  # benign: corroboration FP, never called ML
+
+
+def test_mttc_from_approval_to_traffic_below_threshold():
+    manifest = {"runs": [{"scenario": "contain_syn_flood", "started_at": 1000.0, "ended_at": 1120.0}]}
+    log = [{"event": "enforcement_queued", "action_id": "a1", "op": "apply", "target": "attacker", "approved_at": 1030.0},
+           {"event": "enforcement_reported", "action_id": "a1", "state": "applied", "ts": 1031.5}]
+    log += [{"event": "victim_window", "dst": V, "start": t - 1, "end": t, "pps": 1480.0 if t <= 1033 else 20.0}
+            for t in range(1025, 1040)]
+    rows = lm.containment(manifest, log, V)
+    assert rows == [{"action_id": "a1", "target": "attacker", "scenario": "contain_syn_flood", "approval_to_applied_s": 1.5,
+                     "mttc_s": 4.0, "applied_to_below_s": 2.5, "attack_start_to_contained_s": 34.0,
+                     "pps_before": 1480.0, "pps_after": 20.0}]
+    assert "| `contain_syn_flood` | attacker | 1.5 | 4.0 | 34.0 | 1480.0 -> 20.0 |" in lm.render_containment(rows)
+    assert lm.render_containment([]) == "No lab containment was applied in this run."
