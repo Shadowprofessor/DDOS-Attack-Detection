@@ -1,4 +1,4 @@
-# DDoS Detection & Mitigation Platform: Technical Report (v5.1.0)
+# DDoS Detection & Mitigation Platform: Technical Report (v5.3.0)
 
 Author: Sachit Sharma. Licence: MIT.
 
@@ -21,13 +21,21 @@ code-enforced containment.
 - **Outside that dataset, the ML does not hold up.**
   - Cross-dataset CICIoT2023: F1 swings 1.00 → 0.05 depending only on how the 57 unmapped
     features are filled. Inconclusive (§5.2).
-  - In a real Mininet lab run, the ensemble flagged **0 of 1,452** sampled SYN-flood flows (§5.3).
-    v5.1.0 traced this to training data, not a missing feature: flows shaped like the lab's are
-    46:1 `Benign` in the training set. It is a documented limitation; nothing was retrained.
-- **Of 10 lab attacks, the platform detected 4 fully and 6 partially**, mainly through the L1 rules
-  (L1 fired on all 10). The rule-based L3 alerted on 6 of them, with the expected family on 4.
-  It did **not detect** the SYN, ACK and RST floods or the novel mix. It also raised **2 false positives**: a flash crowd tripped the L1 rate
-  thresholds.
+  - In the v4.6.1 lab run, the CIC-trained ensemble flagged **0 of 1,452** SYN-flood flows. v5.1.0
+    traced this to the training data: lab-shaped flows are 46:1 `Benign` there.
+  - **v5.3.0 retrained L2 on CIC + labelled lab traffic (§5.5).**
+    - On a **held-out** lab run it detects 99.95% of attack flows (macro-F1 0.80, up from 0.02).
+    - CIC leakage-safe macro-F1 rose 0.906 → 0.917.
+    - Lab numbers can be inflated by generator bias: train and test come from the same generator.
+- **Lab detection, v5.3.0:** rules tuned on DEV runs 2+3 and frozen. On the fresh **held-out** run4:
+  - **all 10 attacks detected, and L3 named the expected family for all 10;**
+  - **0 false positives** on benign and flash-crowd traffic;
+  - flood MTTD 1.2–1.4 s.
+
+  Before v5.3.0, on the same DEV runs, 4 attacks were fully detected, L3 missed SYN, ACK and RST,
+  and a flash crowd tripped L1 (§5.3).
+- **Live (v5.2.0):** an attack shows on the SOC website 3.8–5.8 s after it starts. Every alert and
+  incident now carries a plain-language reason with its numbers (v5.3.0).
 - **No model or LLM output can block traffic.** Every mitigation is a PENDING proposal until an
   admin approves it. This is enforced by an AST test. Lab egress containment was measured: 3/3
   probes dropped.
@@ -122,7 +130,22 @@ A two-line protocol rule also catches every attack (benign FPR 36.9%). **Inconcl
 measures sensitivity to a feature-schema mismatch, not generalisation. Details:
 `docs/eval/cross_dataset.md`.
 
-### 5.3 Purple-team lab (Mininet on WSL2, v4.6.1 + v5.1.0)
+### 5.3 Purple-team lab (Mininet on WSL2, v4.6.1 + v5.1.0 + v5.3.0)
+
+**v5.3.0, DEV vs HELD-OUT** (`docs/purple_team/dev_vs_heldout.md`):
+- Rules tuned on runs 2+3 (DEV), then frozen.
+- **run4** (fresh seed, never tuned on) was analysed once, after the freeze.
+
+| | DEV | HELD-OUT run4 |
+|---|---|---|
+| Attacks detected / L3 expected family | 10/10 / 10/10 | **10/10 / 10/10** |
+| False positives (benign, flash crowd) | 0, 0 | **0, 0** |
+| Flood MTTD | 0.9–1.5 s | **1.2–1.4 s** |
+
+Held-out found one new L2 false-positive source: 2-packet connection fragments the victim sent just
+before two scenarios started (12 flows, §5.5).
+
+**Before v5.3.0** (the numbers below):
 12 scenarios in two runs, ~650k packets: `run2` (8 scenarios, v4.6.1) and `run3` (ICMP, ACK, RST and
 LAND floods, v5.1.0; 282,032 packets). Captured at the victim and run through the real L1 / L2 /
 OOD / rule L3 stack (`docs/purple_team/README.md`):
@@ -154,6 +177,40 @@ OOD / rule L3 stack (`docs/purple_team/README.md`):
   scenario, not by detector speed.
 - The run found a product bug (UDP floods routed to the zero-day playbook), now fixed.
 
+### 5.5 L2 retrained on CIC + lab traffic (v5.3.0)
+
+The recipe was fixed before any held-out number existed: XGBoost, 120 trees, depth 7, and
+per-class caps (CIC 12,000, lab 5,000). It is the model `/score/flow` uses.
+
+- **Training data:** CIC-DDoS2019 plus `train1`, 22 labelled lab variants at rates, sources and
+  ports that differ from every evaluation scenario, with their own seed.
+- **Deploy rule, judged on CIC only:** CIC macro-F1 may drop by ≤ 0.05 and benign FPR rise by
+  ≤ 1 point. It passed (+0.011 / +0.07 pt).
+
+Each set is reported separately and never averaged (`docs/eval/l2_retrain/`).
+
+| Set | Macro-F1, before → after | Benign FPR | Attack detection |
+|---|---:|---:|---:|
+| CIC test_real_v2 (separate extraction) | 0.906 → **0.917** | 0.06% → 0.13% | 99.99% → 99.98% |
+| DEV lab (runs 2+3) | 0.021 → **0.872** | 0% → 0% | 15.4% → **99.95%** |
+| **HELD-OUT lab (run4)** | 0.018 → **0.800** | 0.14% → 0% | 20.2% → **99.95%** |
+
+Macro-F1 uses one coarse family taxonomy for every model. The deployed model had merged reflection
+classes, so its native class names would not compare like with like.
+
+**Per class on held-out (after):**
+- **About 1.00 F1:** Syn, ACK, RST, LAND.
+- **Weak (recall):** UDP 0.97, Slowloris 0.50, Reflection (NTP+DNS) 0.32, ICMP 0.27. An ICMP flood
+  is only a few long flows, so there were just 50 training flows.
+
+**Held-out finding:** L2 labels 2-packet TCP connection fragments as an "ACK" flood: 12 flows that
+the victim sent just before two scenarios started. This made those raw MTTDs negative. Counting
+only flows after the start, ICMP is 0.15 s and low-and-slow 118.1 s. It was not tuned away on the
+held-out run.
+
+**Caveat:** one generator and one network produced train, DEV and held-out, so the lab numbers are
+an upper bound for real traffic.
+
 ### 5.4 Threat hunts (v4.7.0)
 Two hypothesis-driven rules: H1 low-rate distributed reflection, H2 distributed slow-read. Each
 has positive and negative tests. Run over the ~221k lab flows they found **nothing**, which is
@@ -170,8 +227,13 @@ crowd. They have not been validated on positive traffic yet.
   Playwright + axe-core, and this report's citation check.
 
 ## 7. Limitations
-1. ML generalisation is unproven and, in the lab, poor. Detection outside CIC-DDoS2019 currently
-   rests on rules.
+1. ML generalisation outside the lab is unproven.
+   - v5.3.0 L2 is good on a held-out lab run (99.95% attack detection) only after training on
+     lab traffic from the same generator, which is likely an inflated upper bound.
+   - It is weak on ICMP, reflection and Slowloris classes, and false-positives on 2-packet TCP
+     fragments.
+   - Real-world detection still rests mostly on rules.
+   - The text below records the pre-v5.3.0 state.
    The lab SYN miss is a training-distribution gap: answered sub-millisecond handshakes are
    overwhelmingly `Benign` in CIC-DDoS2019, so the ensemble is not expected to flag them.
 2. L1 fixed thresholds false-positive on legitimate surges.
@@ -184,7 +246,12 @@ crowd. They have not been validated on positive traffic yet.
    are not hash-pinned.
 6. Lab rates are modest (≤1,500 pkt/s, Python/scapy) and from a single host; no multi-Gbps floods.
 7. The injection evaluation uses static payloads; adaptive attacks are untested.
-8. The LLM provider is not reliable enough to depend on. At release time the live NVIDIA NIM
+8. **The LLM can name an attack wrongly** (measured).
+   - In live run 2 (v5.2.0), Nemotron 3.5 Lightning called a live **UDP flood "Benign / flash
+     crowd"**. It named the SYN and ICMP floods correctly.
+   - This is a measured triage error, not fixed by hard-coding.
+   - The rule analyst's verdict is shown next to the LLM's on every incident (v5.3.0).
+9. The LLM provider is not reliable enough to depend on. At release time the live NVIDIA NIM
    check timed out (60 s) after an earlier HTTP 503. The platform falls back to the deterministic
    rule analyst, which is why no safety property depends on the LLM.
    v5.1.0 live check with Lightning, run once:

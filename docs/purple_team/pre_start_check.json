@@ -1,0 +1,5 @@
+{
+  "note": "Held-out run4: flows that ended before the scenario's generator started (the capture opens ~1 s earlier) and were flagged by any layer. All were 2-packet TCP fragments sent by the victim (10.99.0.10 -> client), labelled 'ACK' by the retrained L2. mttd_after_start_s counts only flows ending after the start. Other run4 scenarios had no flagged pre-start flows.",
+  "run4/icmp_flood": {"pre_start_flows": 9, "pre_start_flagged": 9, "flagged_by": "L2 (label ACK)", "raw_mttd_s": -0.87, "mttd_after_start_s": 0.15},
+  "run4/http_low_and_slow": {"pre_start_flows": 3, "pre_start_flagged": 3, "flagged_by": "L2 (label ACK)", "raw_mttd_s": -0.94, "mttd_after_start_s": 118.11}
+}

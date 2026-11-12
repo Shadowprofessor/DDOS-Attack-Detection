@@ -37,6 +37,9 @@ function WhyFlagged({ items }: { items: Explanation[] }) {
               {x.mitre.length ? ` · ${x.mitre.join(", ")}` : ""}
             </span>
             <span className="reason">{x.reason}</span>
+            {x.evidence?.filter((e) => e.startsWith("Rule analyst on the same data")).map((e) => (
+              <span key={e} className="reason small muted">{e}</span>
+            ))}
           </li>
         ))}
       </ul>

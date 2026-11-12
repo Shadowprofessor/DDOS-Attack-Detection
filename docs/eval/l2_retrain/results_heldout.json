@@ -1,0 +1,1174 @@
+{
+  "recipe": "XGBoost 120 trees, depth 7, hist; caps CIC 12000 / lab 5000 per class",
+  "metric_note": "macro_f1 / per_class use one coarse family taxonomy for every model (COARSE); benign_fpr and attack_detection are taxonomy-free; native_* use each set's own labels",
+  "classes": {
+    "before": [
+      "Benign",
+      "NTP",
+      "Syn",
+      "TFTP",
+      "UDP",
+      "UDP-Reflection-Amplification",
+      "WebDDoS"
+    ],
+    "control": [
+      "Benign",
+      "DNS",
+      "LDAP",
+      "MSSQL",
+      "NTP",
+      "NetBIOS",
+      "Portmap",
+      "SNMP",
+      "Syn",
+      "TFTP",
+      "UDP",
+      "UDP-Lag",
+      "WebDDoS"
+    ],
+    "after": [
+      "ACK",
+      "Benign",
+      "DNS",
+      "ICMP",
+      "LAND",
+      "LDAP",
+      "MSSQL",
+      "NTP",
+      "NetBIOS",
+      "Portmap",
+      "RST",
+      "SNMP",
+      "Slowloris",
+      "Syn",
+      "TFTP",
+      "UDP",
+      "UDP-Lag",
+      "WebDDoS"
+    ]
+  },
+  "train_rows": {
+    "cic": 107612,
+    "lab": 31579
+  },
+  "results": {
+    "CIC test_real_v2 (leakage-safe)": {
+      "before": {
+        "n": 175930,
+        "macro_f1": 0.9059,
+        "benign_fpr": 0.0006,
+        "attack_detection": 0.9999,
+        "per_class": {
+          "Benign": {
+            "precision": 0.9995,
+            "recall": 0.9994,
+            "f1": 0.9995,
+            "support": 36148
+          },
+          "Reflection": {
+            "precision": 0.9628,
+            "recall": 0.9987,
+            "f1": 0.9804,
+            "support": 98672
+          },
+          "Syn": {
+            "precision": 0.9985,
+            "recall": 0.9925,
+            "f1": 0.9955,
+            "support": 22879
+          },
+          "UDP": {
+            "precision": 0.9958,
+            "recall": 0.8007,
+            "f1": 0.8876,
+            "support": 18172
+          },
+          "WebDDoS": {
+            "precision": 0.5568,
+            "recall": 0.8305,
+            "f1": 0.6667,
+            "support": 59
+          }
+        },
+        "native_macro_f1": 0.4313,
+        "native_per_class": {
+          "Benign": {
+            "precision": 0.9995,
+            "recall": 0.9994,
+            "f1": 0.9995,
+            "support": 36148
+          },
+          "DNS": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1468
+          },
+          "LDAP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1338
+          },
+          "MSSQL": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 5894
+          },
+          "NTP": {
+            "precision": 0.9994,
+            "recall": 0.9977,
+            "f1": 0.9986,
+            "support": 48547
+          },
+          "NetBIOS": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 497
+          },
+          "Portmap": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 274
+          },
+          "SNMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1087
+          },
+          "Syn": {
+            "precision": 0.9985,
+            "recall": 0.9925,
+            "f1": 0.9955,
+            "support": 22879
+          },
+          "TFTP": {
+            "precision": 0.9995,
+            "recall": 0.9968,
+            "f1": 0.9982,
+            "support": 39567
+          },
+          "UDP": {
+            "precision": 0.9485,
+            "recall": 0.9492,
+            "f1": 0.9488,
+            "support": 14601
+          },
+          "UDP-Lag": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 3571
+          },
+          "WebDDoS": {
+            "precision": 0.5568,
+            "recall": 0.8305,
+            "f1": 0.6667,
+            "support": 59
+          }
+        }
+      },
+      "control": {
+        "n": 175930,
+        "macro_f1": 0.9143,
+        "benign_fpr": 0.0011,
+        "attack_detection": 0.9998,
+        "per_class": {
+          "Benign": {
+            "precision": 0.9993,
+            "recall": 0.9989,
+            "f1": 0.9991,
+            "support": 36148
+          },
+          "Reflection": {
+            "precision": 0.9959,
+            "recall": 0.9974,
+            "f1": 0.9967,
+            "support": 98672
+          },
+          "Syn": {
+            "precision": 0.9994,
+            "recall": 0.991,
+            "f1": 0.9952,
+            "support": 22879
+          },
+          "UDP": {
+            "precision": 0.9852,
+            "recall": 0.9843,
+            "f1": 0.9848,
+            "support": 18172
+          },
+          "WebDDoS": {
+            "precision": 0.4245,
+            "recall": 1.0,
+            "f1": 0.596,
+            "support": 59
+          }
+        },
+        "native_macro_f1": 0.8432,
+        "native_per_class": {
+          "Benign": {
+            "precision": 0.9993,
+            "recall": 0.9989,
+            "f1": 0.9991,
+            "support": 36148
+          },
+          "DNS": {
+            "precision": 0.7142,
+            "recall": 0.6417,
+            "f1": 0.676,
+            "support": 1468
+          },
+          "LDAP": {
+            "precision": 0.6831,
+            "recall": 0.8505,
+            "f1": 0.7577,
+            "support": 1338
+          },
+          "MSSQL": {
+            "precision": 0.9163,
+            "recall": 0.9457,
+            "f1": 0.9308,
+            "support": 5894
+          },
+          "NTP": {
+            "precision": 0.9998,
+            "recall": 0.995,
+            "f1": 0.9974,
+            "support": 48547
+          },
+          "NetBIOS": {
+            "precision": 0.7782,
+            "recall": 0.833,
+            "f1": 0.8047,
+            "support": 497
+          },
+          "Portmap": {
+            "precision": 0.6061,
+            "recall": 0.7299,
+            "f1": 0.6623,
+            "support": 274
+          },
+          "SNMP": {
+            "precision": 0.7474,
+            "recall": 0.7921,
+            "f1": 0.7691,
+            "support": 1087
+          },
+          "Syn": {
+            "precision": 0.9994,
+            "recall": 0.991,
+            "f1": 0.9952,
+            "support": 22879
+          },
+          "TFTP": {
+            "precision": 0.9999,
+            "recall": 0.9962,
+            "f1": 0.9981,
+            "support": 39567
+          },
+          "UDP": {
+            "precision": 0.9738,
+            "recall": 0.9325,
+            "f1": 0.9527,
+            "support": 14601
+          },
+          "UDP-Lag": {
+            "precision": 0.7637,
+            "recall": 0.8922,
+            "f1": 0.8229,
+            "support": 3571
+          },
+          "WebDDoS": {
+            "precision": 0.4245,
+            "recall": 1.0,
+            "f1": 0.596,
+            "support": 59
+          }
+        }
+      },
+      "after": {
+        "n": 175930,
+        "macro_f1": 0.9167,
+        "benign_fpr": 0.0013,
+        "attack_detection": 0.9998,
+        "per_class": {
+          "Benign": {
+            "precision": 0.9993,
+            "recall": 0.9987,
+            "f1": 0.999,
+            "support": 36148
+          },
+          "Reflection": {
+            "precision": 0.996,
+            "recall": 0.9974,
+            "f1": 0.9967,
+            "support": 98672
+          },
+          "Syn": {
+            "precision": 0.9993,
+            "recall": 0.991,
+            "f1": 0.9951,
+            "support": 22879
+          },
+          "UDP": {
+            "precision": 0.9849,
+            "recall": 0.9843,
+            "f1": 0.9846,
+            "support": 18172
+          },
+          "WebDDoS": {
+            "precision": 0.437,
+            "recall": 1.0,
+            "f1": 0.6082,
+            "support": 59
+          }
+        },
+        "native_macro_f1": 0.8393,
+        "native_per_class": {
+          "Benign": {
+            "precision": 0.9993,
+            "recall": 0.9987,
+            "f1": 0.999,
+            "support": 36148
+          },
+          "DNS": {
+            "precision": 0.6842,
+            "recall": 0.6287,
+            "f1": 0.6553,
+            "support": 1468
+          },
+          "LDAP": {
+            "precision": 0.669,
+            "recall": 0.793,
+            "f1": 0.7257,
+            "support": 1338
+          },
+          "MSSQL": {
+            "precision": 0.9155,
+            "recall": 0.9427,
+            "f1": 0.9289,
+            "support": 5894
+          },
+          "NTP": {
+            "precision": 0.9998,
+            "recall": 0.9948,
+            "f1": 0.9973,
+            "support": 48547
+          },
+          "NetBIOS": {
+            "precision": 0.7856,
+            "recall": 0.833,
+            "f1": 0.8086,
+            "support": 497
+          },
+          "Portmap": {
+            "precision": 0.6156,
+            "recall": 0.719,
+            "f1": 0.6633,
+            "support": 274
+          },
+          "SNMP": {
+            "precision": 0.7047,
+            "recall": 0.8077,
+            "f1": 0.7527,
+            "support": 1087
+          },
+          "Syn": {
+            "precision": 0.9993,
+            "recall": 0.991,
+            "f1": 0.9951,
+            "support": 22879
+          },
+          "TFTP": {
+            "precision": 0.9999,
+            "recall": 0.9962,
+            "f1": 0.9981,
+            "support": 39567
+          },
+          "UDP": {
+            "precision": 0.972,
+            "recall": 0.9356,
+            "f1": 0.9534,
+            "support": 14601
+          },
+          "UDP-Lag": {
+            "precision": 0.7709,
+            "recall": 0.8869,
+            "f1": 0.8248,
+            "support": 3571
+          },
+          "WebDDoS": {
+            "precision": 0.437,
+            "recall": 1.0,
+            "f1": 0.6082,
+            "support": 59
+          }
+        }
+      }
+    },
+    "DEV lab run2,run3": {
+      "before": {
+        "n": 280687,
+        "macro_f1": 0.0211,
+        "benign_fpr": 0.0,
+        "attack_detection": 0.154,
+        "per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 31278
+          },
+          "Benign": {
+            "precision": 0.0041,
+            "recall": 1.0,
+            "f1": 0.0081,
+            "support": 970
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 20
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 59263
+          },
+          "Reflection": {
+            "precision": 0.2344,
+            "recall": 0.1489,
+            "f1": 0.1821,
+            "support": 67770
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 300
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 34843
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 86242
+          }
+        },
+        "native_macro_f1": 0.0008,
+        "native_per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 31278
+          },
+          "Benign": {
+            "precision": 0.0041,
+            "recall": 1.0,
+            "f1": 0.0081,
+            "support": 970
+          },
+          "DNS": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33885
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 20
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "NTP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33885
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 59263
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 300
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 34843
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 86242
+          }
+        }
+      },
+      "control": {
+        "n": 280687,
+        "macro_f1": 0.0642,
+        "benign_fpr": 0.0,
+        "attack_detection": 0.5223,
+        "per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 31278
+          },
+          "Benign": {
+            "precision": 0.0072,
+            "recall": 1.0,
+            "f1": 0.0143,
+            "support": 970
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 20
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 59263
+          },
+          "Reflection": {
+            "precision": 0.4125,
+            "recall": 0.8881,
+            "f1": 0.5633,
+            "support": 67770
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 300
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 34843
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 86242
+          }
+        },
+        "native_macro_f1": 0.0014,
+        "native_per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 31278
+          },
+          "Benign": {
+            "precision": 0.0072,
+            "recall": 1.0,
+            "f1": 0.0143,
+            "support": 970
+          },
+          "DNS": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33885
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 20
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "NTP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33885
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 59263
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 300
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 34843
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 86242
+          }
+        }
+      },
+      "after": {
+        "n": 280687,
+        "macro_f1": 0.8717,
+        "benign_fpr": 0.0,
+        "attack_detection": 0.9995,
+        "per_class": {
+          "ACK": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 31278
+          },
+          "Benign": {
+            "precision": 0.8661,
+            "recall": 1.0,
+            "f1": 0.9282,
+            "support": 970
+          },
+          "ICMP": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 20
+          },
+          "LAND": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 1
+          },
+          "RST": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 59263
+          },
+          "Reflection": {
+            "precision": 0.8806,
+            "recall": 0.3266,
+            "f1": 0.4765,
+            "support": 67770
+          },
+          "Slowloris": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.6667,
+            "support": 300
+          },
+          "Syn": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 34843
+          },
+          "UDP": {
+            "precision": 0.6459,
+            "recall": 0.9652,
+            "f1": 0.7739,
+            "support": 86242
+          }
+        },
+        "native_macro_f1": 0.7841,
+        "native_per_class": {
+          "ACK": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 31278
+          },
+          "Benign": {
+            "precision": 0.8661,
+            "recall": 1.0,
+            "f1": 0.9282,
+            "support": 970
+          },
+          "DNS": {
+            "precision": 0.4396,
+            "recall": 0.1939,
+            "f1": 0.2691,
+            "support": 33885
+          },
+          "ICMP": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 20
+          },
+          "LAND": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 1
+          },
+          "NTP": {
+            "precision": 0.4392,
+            "recall": 0.1321,
+            "f1": 0.2031,
+            "support": 33885
+          },
+          "RST": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 59263
+          },
+          "Slowloris": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.6667,
+            "support": 300
+          },
+          "Syn": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 34843
+          },
+          "UDP": {
+            "precision": 0.6459,
+            "recall": 0.9652,
+            "f1": 0.7739,
+            "support": 86242
+          }
+        }
+      }
+    },
+    "HELD-OUT lab run4": {
+      "before": {
+        "n": 281795,
+        "macro_f1": 0.0184,
+        "benign_fpr": 0.0014,
+        "attack_detection": 0.2015,
+        "per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 45471
+          },
+          "Benign": {
+            "precision": 0.0031,
+            "recall": 0.9986,
+            "f1": 0.0061,
+            "support": 693
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 74
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 73235
+          },
+          "Reflection": {
+            "precision": 0.1737,
+            "recall": 0.1468,
+            "f1": 0.1591,
+            "support": 67019
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 303
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 26891
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 68108
+          }
+        },
+        "native_macro_f1": 0.0006,
+        "native_per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 45471
+          },
+          "Benign": {
+            "precision": 0.0031,
+            "recall": 0.9986,
+            "f1": 0.0061,
+            "support": 693
+          },
+          "DNS": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33723
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 74
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "NTP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33296
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 73235
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 303
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 26891
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 68108
+          }
+        }
+      },
+      "control": {
+        "n": 281795,
+        "macro_f1": 0.0692,
+        "benign_fpr": 0.0,
+        "attack_detection": 0.4547,
+        "per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 45471
+          },
+          "Benign": {
+            "precision": 0.0045,
+            "recall": 1.0,
+            "f1": 0.009,
+            "support": 693
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 74
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 73235
+          },
+          "Reflection": {
+            "precision": 0.4682,
+            "recall": 0.8902,
+            "f1": 0.6137,
+            "support": 67019
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 303
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 26891
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 68108
+          }
+        },
+        "native_macro_f1": 0.0009,
+        "native_per_class": {
+          "ACK": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 45471
+          },
+          "Benign": {
+            "precision": 0.0045,
+            "recall": 1.0,
+            "f1": 0.009,
+            "support": 693
+          },
+          "DNS": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33723
+          },
+          "ICMP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 74
+          },
+          "LAND": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 1
+          },
+          "NTP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 33296
+          },
+          "RST": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 73235
+          },
+          "Slowloris": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 303
+          },
+          "Syn": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 26891
+          },
+          "UDP": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 68108
+          }
+        }
+      },
+      "after": {
+        "n": 281795,
+        "macro_f1": 0.8004,
+        "benign_fpr": 0.0,
+        "attack_detection": 0.9995,
+        "per_class": {
+          "ACK": {
+            "precision": 0.9987,
+            "recall": 1.0,
+            "f1": 0.9994,
+            "support": 45471
+          },
+          "Benign": {
+            "precision": 0.8221,
+            "recall": 1.0,
+            "f1": 0.9023,
+            "support": 693
+          },
+          "ICMP": {
+            "precision": 1.0,
+            "recall": 0.2703,
+            "f1": 0.4255,
+            "support": 74
+          },
+          "LAND": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 1
+          },
+          "RST": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 73235
+          },
+          "Reflection": {
+            "precision": 0.9214,
+            "recall": 0.3222,
+            "f1": 0.4774,
+            "support": 67019
+          },
+          "Slowloris": {
+            "precision": 1.0,
+            "recall": 0.495,
+            "f1": 0.6623,
+            "support": 303
+          },
+          "Syn": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 26891
+          },
+          "UDP": {
+            "precision": 0.5933,
+            "recall": 0.973,
+            "f1": 0.7371,
+            "support": 68108
+          }
+        },
+        "native_macro_f1": 0.7198,
+        "native_per_class": {
+          "ACK": {
+            "precision": 0.9987,
+            "recall": 1.0,
+            "f1": 0.9994,
+            "support": 45471
+          },
+          "Benign": {
+            "precision": 0.8221,
+            "recall": 1.0,
+            "f1": 0.9023,
+            "support": 693
+          },
+          "DNS": {
+            "precision": 0.4653,
+            "recall": 0.1929,
+            "f1": 0.2727,
+            "support": 33723
+          },
+          "ICMP": {
+            "precision": 1.0,
+            "recall": 0.2703,
+            "f1": 0.4255,
+            "support": 74
+          },
+          "LAND": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 1
+          },
+          "NTP": {
+            "precision": 0.4485,
+            "recall": 0.1273,
+            "f1": 0.1984,
+            "support": 33296
+          },
+          "RST": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 73235
+          },
+          "Slowloris": {
+            "precision": 1.0,
+            "recall": 0.495,
+            "f1": 0.6623,
+            "support": 303
+          },
+          "Syn": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 26891
+          },
+          "UDP": {
+            "precision": 0.5933,
+            "recall": 0.973,
+            "f1": 0.7371,
+            "support": 68108
+          }
+        }
+      }
+    }
+  },
+  "deploy_rule": {
+    "cic_macro_f1_change": 0.0108,
+    "cic_benign_fpr_change": 0.0007,
+    "deploy": true
+  }
+}
