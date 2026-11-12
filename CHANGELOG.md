@@ -4,6 +4,76 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] — 2026-11-13
+
+### Added
+- **Agentic analyst** (`src/agent/agent_analyst.py`): Lightning (reasoning off) with **read-only** tools.
+  Ultra goes first for severity 5 when escalation is on. Same `<telemetry>` sanitising, schema
+  validation, retry and rule fallback as before.
+  - Tools: live windows, top talkers, baseline comparison, MITRE lookup, playbook, similar incidents,
+    containment options.
+  - Output: attack type, evidence, reason, confidence, false-positive assessment, and a ranked
+    containment plan (action, target, blast radius, reversible, TTL).
+  - `POST /api/incidents/{id}/agent` runs it. `.../agent/propose/{rank}` turns one plan step into a
+    **PENDING** action. Nothing is executed.
+- **Coverage on every lab step:** the share of the attack it would stop, computed by the platform from
+  OVS port counters (port drops) or live windows (IP drops), never by the model.
+  - A top step under 50% is re-ranked below a better one.
+  - If no step reaches 50%, the platform adds the port drop that does.
+  - Both changes are recorded in `policy_violations`. The UI shows "Stops ~x%".
+- **Human-approved lab containment on OVS** (`lab/containment.py`, `lab/traffic/enforcer.py`).
+  - `approve()` only **queues** `LAB_OVS_DROP` / `LAB_OVS_PORT_DROP`. The WSL2 enforcer (root,
+    lab-only) re-validates each one and installs `hard_timeout=TTL,actions=drop` with cookie prefix
+    `0x5AB0`.
+  - Guarded: never the victim, the NAT, or anything outside `10.99.0.0/24`. TTL clamp 30–3600 s.
+    Kill switch `lab/KILL` removes every `0x5AB0` rule.
+  - Every state change is logged (queued → applied → expired/removed) and relayed by the bridge.
+- **Triage accuracy** vs lab ground truth (`scripts/triage_accuracy.py`, `docs/eval/triage/`).
+- **MTTC** measured from the switch's own counters (`scripts/live_mttd.py`, `docs/eval/live/`).
+- `scripts/demo_assist.py`: runs the agent and proposes the top lab step for new live incidents. It
+  uses an analyst key, so it cannot approve.
+- Demo catalogue (`lab/scenarios/demo/`, 120 s SYN and UDP floods); `CONTAIN=1 bash lab/live_demo.sh`.
+
+### Measured
+| | Rules | Lightning | ML (L2) |
+|---|---:|---:|---:|
+| Attack type correct, DEV / held-out | 10/10 / 10/10 | 8/10 / 8/10 | 7/10 / 7/10 |
+| Family correct, DEV / held-out | 10/10 / 10/10 | 7/10 / 7/10 | 8/10 / 8/10 |
+| False alarms (benign, flash crowd) | 0% | 0% | 0% |
+
+Lightning's errors: NTP reflection → "Benign / flash crowd", LAND → "SYN flood", novel mix → wrong family.
+
+- **Live containment (live8):**
+  - Approval → rule on the switch: **0.61 s**.
+  - **MTTC** (approval → victim below 100 pps for 2 samples): **2.63 s**.
+  - Victim rate 2,997 → 0 pps (100%). Attack start → contained 41.16 s (most of it is the human
+    approving).
+  - The same 300 s port rule also kept the second (UDP) flood out until it expired. That flood was
+    then detected about 1.5 s after expiry.
+- **Live MTTD on the website, live4–live8 (7 floods):** 2.66–8.55 s, median 4.89 s.
+- **Recorded as measured:** Lightning called the live **UDP** flood a "SYN flood" in live4, live5 and
+  live8. It was right in live7 (ML had said SYN). It named every SYN flood correctly.
+- **live5:** the approved single-IP drop stopped **2%** of a 50-source flood; MTTC was not reached.
+  This led to the coverage ranking above.
+
+### Fixed (found in live runs)
+- `/score/flow` proposed blocking the victim (live4).
+- Per-window logging lagged the bridge by 7 s; it is now batched (live4).
+- A demo YAML with an unquoted colon broke the lab run (live3). Every catalogue now has a parse test.
+- WebSocket double-close error.
+- The bridge exited when the server was not up yet, which lost run live6. It now waits.
+- **Stale approvals:**
+  - An approval not applied within its TTL expires.
+  - A proposal older than its TTL cannot be approved.
+  - The enforcer refuses approvals made before it started (live5 and live8).
+- `/score/flow` no longer proposes host iptables blocks for lab addresses. On Approvals they were
+  approved instead of the lab step (live7).
+
+### Safety
+- Unchanged: the AI only recommends, and every lab rule is applied only after
+  `PendingActionManager.approve()` by an admin key. `tests/test_mitigation_bypass.py` stays green.
+- No auto-approve option was added.
+
 ## [5.3.0] — 2026-11-12
 
 ### Pre-fixes from v5.2.0

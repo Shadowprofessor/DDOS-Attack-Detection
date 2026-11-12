@@ -76,6 +76,7 @@ class Enforcer:
         self.done: set = set()        # (action_id, op) already handled
         self.active: Dict[str, dict] = {}  # action_id -> rule (applied, not yet expired/removed)
         self._ports: Optional[Dict[str, str]] = None
+        self.started_at = clock()  # approvals older than this belong to an earlier run (v6.0.0, live8)
 
     def _log(self, path: Path, rec: dict) -> None:
         with path.open("a", encoding="utf-8") as fh:
@@ -164,6 +165,16 @@ class Enforcer:
             if key in self.done:
                 continue
             self.done.add(key)
+            # v6.0.0 (live8): an approval made before this enforcer started was for an earlier run (its hosts
+            # and switch are gone). Never apply it to this run; 2 s allows for the Windows/WSL2 clock gap.
+            approved = entry.get("approved_at")
+            if approved is not None and approved < self.started_at - 2.0 and str(entry.get("action_id")) not in self.active:
+                aid = str(entry.get("action_id"))
+                if entry.get("op") == "remove":
+                    self.report(aid, "removed", "no rule on this switch: it was approved for an earlier run")
+                else:
+                    self.report(aid, "refused", "approved before this enforcer started (earlier run); propose it again")
+                continue
             (self.remove if entry.get("op") == "remove" else self.apply)(entry)
         self.expire()
         return True

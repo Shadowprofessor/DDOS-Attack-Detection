@@ -56,6 +56,6 @@ two AI agents.
 ```bash
 pip install -r requirements.txt
 python -m src.demo        # benign/attacks + low-and-slow + zero-day flag
-pytest tests/ -q          # full suite (607 passing, 5 skipped at v5.1.0)
+pytest tests/ -q          # full suite (702 passing, 5 skipped at v5.4.0)
 ```
 See `README.md` → "Getting the data" for datasets/artifacts (gitignored).

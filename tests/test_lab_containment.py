@@ -203,3 +203,22 @@ def test_stale_lab_proposal_cannot_be_approved(tmp_path, monkeypatch):
     assert not ok and "older than its TTL" in msg
     assert action["status"] == "FAILED"
     assert mgr.lab_queue() == []
+
+
+def test_enforcer_refuses_approvals_from_an_earlier_run(tmp_path):
+    """live8: two IP drops approved minutes before the run (still within TTL) reached the new enforcer."""
+    run = tmp_path / "live8"
+    run.mkdir()
+    (run / "manifest.json").write_text(json.dumps({"switch_ports": {"s1-eth1": "victim", "s1-eth2": "attacker"}}))
+    clk = Clock()
+    ovs = FakeOVS()
+    enf = Enforcer(run, run=ovs, clock=clk, kill_file=tmp_path / "KILL")
+    old = {"action_id": "old1", "op": "apply", "action_type": "LAB_OVS_DROP", "target": "10.99.0.149",
+           "victim_ip": "10.99.0.10", "ttl_s": 300, "approved_at": clk.t - 223}
+    new = {**old, "action_id": "new1", "target": "10.99.0.150", "approved_at": clk.t + 5}
+    (run / "enforce_queue.jsonl").write_text(json.dumps(old) + "\n" + json.dumps(new) + "\n")
+    enf.tick()
+    flows = [a[3] for a in ovs.calls if a[1] == "add-flow"]
+    assert len(flows) == 1 and "10.99.0.150" in flows[0]
+    status = [json.loads(x) for x in (run / "enforce_status.jsonl").read_text().splitlines()]
+    assert {(s["action_id"], s["state"]) for s in status} >= {("old1", "refused"), ("new1", "applied")}
