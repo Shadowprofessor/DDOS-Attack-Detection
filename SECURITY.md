@@ -23,8 +23,6 @@ Please include:
 - the steps to reproduce against a **local** instance;
 - the impact.
 
-Machine-readable contact: [`.well-known/security.txt`](.well-known/security.txt) (RFC 9116).
-
 **What to expect:**
 - an acknowledgement within **72 hours**;
 - a triage assessment with a severity (CVSS) within **7 days**;
