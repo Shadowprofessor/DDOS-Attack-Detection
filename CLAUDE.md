@@ -21,6 +21,7 @@ two AI agents.
   Optional: Nemotron 3 Ultra (`nvidia/nemotron-3-ultra-550b-a55b`) as a severity-5 escalation
   (`DDOS_LLM_ESCALATE_ULTRA`, off by default). Base `https://integrate.api.nvidia.com/v1`, key
   `NVIDIA_API_KEY`, via `src/agent/`. Aggregated-alert triage only. Offline rule fallback when no key.
+  The SOC chat (`src/agent/soc_chat_assistant.py`) uses the same model chain; read-only, no tools.
 - **Dashboard/obs.** React SOC web app (`dashboard/`, served at `/app`; legacy static dashboard removed
   in v5.0.0), WebSocket streams (`src/web/`, `/ws/incidents`), Prometheus `/metrics`, JSON logs (`src/obs/`).
 

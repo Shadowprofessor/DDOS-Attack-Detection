@@ -231,6 +231,11 @@ python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000
 ```
 Open **http://localhost:8000/app/live-attack** and sign in with `demo-analyst-key-01`.
 
+**Port:** the live demo always uses **8000**. The bridge reads the platform URL from `DDOS_API_URL`
+(default `http://127.0.0.1:8000`) and its key from `DDOS_LIVE_KEY` (else the first `DDOS_API_KEYS` entry).
+Sign in on the website with the **admin** key (`demo-admin-key-0001`) to approve or reject. Use the
+analyst key to only view.
+
 **2. Bridge (second Windows terminal).** Start it *before* the lab run; it ignores pcaps that already exist:
 ```powershell
 $env:DDOS_LIVE_KEY = "demo-analyst-key-01"

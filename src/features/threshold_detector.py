@@ -125,11 +125,9 @@ class RateThresholdDetector:
 
             # Compute current metrics over window
             count = len(dq)
-            if count == 0:
-                dt = self.window_seconds
-            else:
-                window_span = dq[-1][0] - dq[0][0]
-                dt = max(window_span, 0.05)  # Avoid div by 0 for instantaneous bursts
+            # v5.3.0: rate = events in the window / window length. It used to be divided by the span between
+            # the first and last event (min 0.05 s), so two benign flows 50 ms apart read as hundreds of pps.
+            dt = self.window_seconds  # Avoid div by 0 for instantaneous bursts
 
             pps = count / dt
             total_bytes = sum(item[1] for item in dq)
@@ -189,11 +187,9 @@ class RateThresholdDetector:
             eval_key = f"dst:{dst_ip}" if dst_ip and f"dst:{dst_ip}" in self._ip_windows else (src_ip if src_ip in self._ip_windows else "__global__")
             dq = self._ip_windows[eval_key]
             count = len(dq)
-            if count == 0:
-                dt = self.window_seconds
-            else:
-                window_span = dq[-1][0] - dq[0][0]
-                dt = max(window_span, 0.05)
+            # v5.3.0: rate = events in the window / window length. It used to be divided by the span between
+            # the first and last event (min 0.05 s), so two benign flows 50 ms apart read as hundreds of pps.
+            dt = self.window_seconds
 
             pps = count / dt
             total_bytes = sum(item[1] for item in dq)

@@ -19,6 +19,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from src.agent.command_check import annotate
+
 logger = logging.getLogger("SocChatAssistant")
 
 ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
@@ -98,6 +100,13 @@ KB: List[tuple] = [
         "Report: CERT-In within 6 hours where it applies (draft on the incident page); record root cause and lessons learned.",
     ]),
 ]
+
+
+def _num(v: Any, fmt: str) -> str:
+    """Format a real value, or say "unknown". The fallback never invents a number."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return "unknown"
+    return fmt.format(v)
 
 
 def _kb_matches(text: str, limit: int = 2) -> List[tuple]:
@@ -212,14 +221,16 @@ class SocChatAssistant:
                         continue
                     if content:
                         text = f"{NOTICE}\n\n{content}" if action_request else content
+                        text, checked = annotate(text)  # flags invented settings/flags (v5.3.0)
                         return {"response": text, "model": model, "authority": "READ_ONLY_ADVISORY",
-                                "grounding": sorted(ctx)}
+                                "grounding": sorted(ctx), "command_check": checked}
         except Exception as e:  # pragma: no cover - defensive; fall back below
             reason = "the model request failed"
             logger.debug("Nemotron chat failed: %s", type(e).__name__)
 
-        return {"response": self._fallback(q, ctx, action_request, reason), "model": "rules (offline)",
-                "authority": "READ_ONLY_ADVISORY", "grounding": sorted(ctx)}
+        text, checked = annotate(self._fallback(q, ctx, action_request, reason))
+        return {"response": text, "model": "rules (offline)", "authority": "READ_ONLY_ADVISORY",
+                "grounding": sorted(ctx), "command_check": checked}
 
     # ------------------------------------------------------------------ offline answer
     def _fallback(self, q: str, ctx: Dict[str, Any], action_request: bool, reason: str) -> str:
@@ -230,14 +241,14 @@ class SocChatAssistant:
         if alerts:
             for a in alerts:
                 out.append(f"Live now: {a['status']} L1 alert, {a.get('vector') or 'rate anomaly'} toward {a['dst']} "
-                           f"({a.get('hint')}), peak {a.get('peak_pps', 0):,.0f} pkt/s.")
+                           f"({a.get('hint') or 'unknown'}), peak {_num(a.get('peak_pps'), '{:,.0f} pkt/s')}.")
         elif ctx.get("live_latest_windows"):
             w = ctx["live_latest_windows"][0]
-            out.append(f"Live now: no active L1 alert; busiest victim {w['dst']} at {w['pps']:,.0f} pkt/s ({w['hint']}).")
+            out.append(f"Live now: no active L1 alert; busiest victim {w['dst']} at {_num(w.get('pps'), '{:,.0f} pkt/s')} ({w.get('hint') or 'unknown'}).")
         inc = ctx.get("incident")
         if inc:
             ana = inc.get("analysis") or {}
-            out.append(f"Incident {inc['id']} ({inc['status']}, severity {inc['severity']}): {inc['title']}. "
+            out.append(f"Incident {inc['id']} ({inc['status']}, severity {_num(inc.get('severity'), '{}')}): {inc['title']}. "
                        f"L3 verdict: {ana.get('attack_type') or 'not analysed yet'}.")
             for pb in inc.get("playbooks") or []:
                 out.append(f"Playbook {pb['id']}: " + "; ".join(pb["steps"]))
@@ -248,7 +259,7 @@ class SocChatAssistant:
             if action_request and n:
                 for a in ctx.get("pending_actions", [])[:3]:
                     out.append(f"- {a['action_id']}: {a['action_type']} {a['attacker_ip']} -> {a['victim_ip']} "
-                               f"(confidence {float(a.get('confidence') or 0):.2f})")
+                               f"(confidence {_num(a.get('confidence'), '{:.2f}')})")
         topics = _kb_matches(q + " " + " ".join(str(a.get("vector") or "") + " " + str(a.get("hint") or "") for a in alerts))
         for title, lines in topics:
             out.append(f"\n{title}:")

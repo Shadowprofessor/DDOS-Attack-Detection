@@ -310,7 +310,7 @@ class RollingAnomalyDetector:
                 res, _ = agent._call_nemotron_api(prompt)
                 if res and isinstance(res, dict):
                     return {
-                        "source": "Nemotron 3 Ultra (LLM)",
+                        "source": f"Nemotron ({getattr(agent, 'model', 'LLM')})",
                         "assessment": res.get("explanation", "Statistical traffic anomaly detected."),
                         "severity": evaluation.severity,
                         "confidence": "HIGH" if evaluation.anomaly_score > 70 else "MEDIUM",
@@ -392,3 +392,70 @@ class RollingAnomalyDetector:
 # Public alias matching H9 requirement
 AnomalyDetector = RollingAnomalyDetector
 
+
+
+class PerDestinationBaseline:
+    """v5.3.0 adaptive H9: one EWMA baseline of packet/byte rate *per destination*.
+
+    The old H9 compared every destination against one fixed baseline (a 60-packet benign capture,
+    ~2 pkt/s, std 1), so ordinary traffic to any busy server scored "HIGH". Here each destination
+    learns its own normal rate:
+
+    * **warm-up:** the first `warmup` observations of a destination only train the baseline and
+      are reported as `LEARNING` (never an anomaly);
+    * afterwards an observation is an anomaly when its z-score is >= `z_crit`; the std has a floor
+      of `rel_std_floor` x mean (and 1), so a very steady baseline does not turn small wobbles into
+      huge z-scores;
+    * the baseline only learns from observations that were *not* anomalous, so a flood does not
+      teach the detector that floods are normal.
+
+    Caveat: traffic that is already an attack during the warm-up becomes that destination's
+    baseline. H6 (fixed rate thresholds) still covers that case.
+    """
+
+    def __init__(self, warmup: int = 20, alpha: float = 0.05, z_warn: float = 3.0, z_crit: float = 5.0,
+                 rel_std_floor: float = 0.25, max_destinations: int = 4096):
+        self.warmup, self.alpha, self.z_warn, self.z_crit = warmup, alpha, z_warn, z_crit
+        self.rel_std_floor, self.max_destinations = rel_std_floor, max_destinations
+        self._state: Dict[str, Dict[str, float]] = {}
+
+    def _std(self, var: float, mean: float) -> float:
+        return max(math.sqrt(max(var, 0.0)), self.rel_std_floor * abs(mean), 1.0)
+
+    def evaluate(self, dst: str, pps: float, bps: float) -> Dict[str, Any]:
+        st = self._state.get(dst)
+        if st is None:
+            if len(self._state) >= self.max_destinations:
+                self._state.pop(next(iter(self._state)))  # bounded memory: forget the oldest
+            st = self._state[dst] = {"n": 0, "mean_pps": pps, "var_pps": 0.0, "mean_bps": bps, "var_bps": 0.0}
+        learning = st["n"] < self.warmup
+        z_pps = (pps - st["mean_pps"]) / self._std(st["var_pps"], st["mean_pps"])
+        z_bps = (bps - st["mean_bps"]) / self._std(st["var_bps"], st["mean_bps"])
+        is_anomaly = (not learning) and z_pps >= self.z_crit
+        if learning:
+            severity = "LEARNING"
+        elif z_pps >= 2 * self.z_crit:
+            severity = "CRITICAL"
+        elif z_pps >= self.z_crit:
+            severity = "HIGH"
+        elif z_pps >= self.z_warn:
+            severity = "MEDIUM"
+        else:
+            severity = "NORMAL"
+        reasons = []
+        if is_anomaly:
+            reasons.append(f"{pps:.1f} pps to {dst} is +{z_pps:.1f} sigma above its own baseline "
+                           f"(mean {st['mean_pps']:.1f} pps over {int(st['n'])} observations)")
+        baseline = {"mean_pps": round(st["mean_pps"], 2), "std_pps": round(self._std(st["var_pps"], st["mean_pps"]), 2),
+                    "mean_bps": round(st["mean_bps"], 2), "observations": int(st["n"])}
+        if not is_anomaly:  # learn only from normal-looking traffic
+            a = self.alpha if not learning else 1.0 / (st["n"] + 1)  # warm-up: plain running mean
+            for k, x in (("pps", pps), ("bps", bps)):
+                d = x - st[f"mean_{k}"]
+                st[f"mean_{k}"] += a * d
+                st[f"var_{k}"] = (1 - a) * (st[f"var_{k}"] + a * d * d)
+            st["n"] += 1
+        return {"is_anomaly": is_anomaly, "severity": severity, "learning": learning,
+                "anomaly_score": round(min(100.0, max(0.0, z_pps / self.z_crit * 60.0)), 1),
+                "z_scores": {"z_pps": round(z_pps, 2), "z_bps": round(z_bps, 2)},
+                "baseline_metrics": baseline, "anomaly_reasons": reasons, "destination": dst}

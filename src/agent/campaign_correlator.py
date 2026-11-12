@@ -335,7 +335,7 @@ class CampaignCorrelator:
                 res, _ = agent._call_nemotron_api(prompt)
                 if res and isinstance(res, dict):
                     return {
-                        "source": "Nemotron 3 Ultra (LLM)",
+                        "source": f"Nemotron ({getattr(agent, 'model', 'LLM')})",
                         "assessment": res.get("explanation", "Multi-flow coordinated attack detected."),
                         "severity": res.get("severity", "HIGH"),
                         "coordination_confidence": "HIGH" if campaign.bot_count > 3 else "MEDIUM",
