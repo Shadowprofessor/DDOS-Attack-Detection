@@ -1,0 +1,537 @@
+{
+  "runs": [
+    "run2",
+    "run3"
+  ],
+  "model_fingerprint": "d953fc29e14f",
+  "containment": {
+    "probe": "192.0.2.1",
+    "drops_before": 0,
+    "drops_after": 3,
+    "uplink": "eth0",
+    "packets_seen_at_boundary": 3,
+    "packets_seen_on_uplink": 0,
+    "contained": true,
+    "verdict": "contained",
+    "diagnostics": {
+      "ping_binary": "/usr/bin/ping",
+      "client_routes": [
+        "default via 10.99.0.254 dev client-eth0 ",
+        "10.99.0.0/24 dev client-eth0 proto kernel scope link src 10.99.0.40"
+      ],
+      "lab_ping_victim": true,
+      "lab_ping_nat_gw": true,
+      "probe_output": [
+        "--- 192.0.2.1 ping statistics ---",
+        "3 packets transmitted, 0 received, 100% packet loss, time 2044ms"
+      ]
+    }
+  },
+  "results": [
+    {
+      "scenario": "benign_baseline",
+      "flows": 413,
+      "flagged_flows": 0,
+      "ml_scored_flows": 413,
+      "ml_sample_every": 1,
+      "flagged_rate": 0.0,
+      "layer_hits": {
+        "L1": 0,
+        "L2": 0,
+        "OOD": 0
+      },
+      "observed_layers": [],
+      "expected_incident": false,
+      "observed_incident": false,
+      "expected_family": null,
+      "l3_attack_type": "Benign / insufficient evidence",
+      "l3_family": null,
+      "family_match": null,
+      "expected_layers": [],
+      "missing_layers": [],
+      "mttd_s": null,
+      "mttd_with_idle_export_s": null,
+      "mttd_budget_s": null,
+      "top_labels": {
+        "Benign": 413
+      },
+      "aggregate_flows_to_victim": 413,
+      "l7_slow_connections": 0,
+      "packets_sent": 1982,
+      "stopped_by": "completed",
+      "outcome": "clean",
+      "run": "run2"
+    },
+    {
+      "scenario": "dns_reflection_sim",
+      "flows": 33885,
+      "flagged_flows": 33694,
+      "ml_scored_flows": 1474,
+      "ml_sample_every": 23,
+      "flagged_rate": 0.9944,
+      "layer_hits": {
+        "L1": 33685,
+        "L2": 1474,
+        "OOD": 1352
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "dns_amplification",
+      "l3_attack_type": "DNS reflection-amplification",
+      "l3_family": "dns_amplification",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 0.89,
+      "mttd_with_idle_export_s": 60.89,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 32411,
+        "UDP": 978,
+        "DNS": 291,
+        "NTP": 205
+      },
+      "aggregate_flows_to_victim": 33884,
+      "l7_slow_connections": null,
+      "packets_sent": 47996,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "flash_crowd",
+      "flows": 557,
+      "flagged_flows": 0,
+      "ml_scored_flows": 557,
+      "ml_sample_every": 1,
+      "flagged_rate": 0.0,
+      "layer_hits": {
+        "L1": 0,
+        "L2": 0,
+        "OOD": 0
+      },
+      "observed_layers": [],
+      "expected_incident": false,
+      "observed_incident": false,
+      "expected_family": null,
+      "l3_attack_type": "Benign / insufficient evidence",
+      "l3_family": null,
+      "family_match": null,
+      "expected_layers": [],
+      "missing_layers": [],
+      "mttd_s": null,
+      "mttd_with_idle_export_s": null,
+      "mttd_budget_s": null,
+      "top_labels": {
+        "Benign": 557
+      },
+      "aggregate_flows_to_victim": 557,
+      "l7_slow_connections": 0,
+      "packets_sent": 2779,
+      "stopped_by": "completed",
+      "outcome": "clean",
+      "run": "run2"
+    },
+    {
+      "scenario": "http_low_and_slow",
+      "flows": 300,
+      "flagged_flows": 300,
+      "ml_scored_flows": 300,
+      "ml_sample_every": 1,
+      "flagged_rate": 1.0,
+      "layer_hits": {
+        "L1": 281,
+        "L2": 150,
+        "OOD": 0
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "l7_low_and_slow",
+      "l3_attack_type": "Slowloris / low-and-slow HTTP (L7)",
+      "l3_family": "l7_low_and_slow",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 117.27,
+      "mttd_with_idle_export_s": 177.27,
+      "mttd_budget_s": 90,
+      "top_labels": {
+        "Slowloris": 150,
+        "Benign": 150
+      },
+      "aggregate_flows_to_victim": 300,
+      "l7_slow_connections": 300,
+      "packets_sent": 17850,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "novel_ood_mix",
+      "flows": 31065,
+      "flagged_flows": 30874,
+      "ml_scored_flows": 1480,
+      "ml_sample_every": 21,
+      "flagged_rate": 0.9939,
+      "layer_hits": {
+        "L1": 30864,
+        "L2": 1480,
+        "OOD": 704
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "zero_day_ood",
+      "l3_attack_type": "Unclassified multi-protocol flood (possible zero-day / novel)",
+      "l3_family": "zero_day_ood",
+      "family_match": true,
+      "expected_layers": [
+        "OOD",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 1.41,
+      "mttd_with_idle_export_s": 61.41,
+      "mttd_budget_s": 60,
+      "top_labels": {
+        "unscored": 29585,
+        "UDP": 695,
+        "ACK": 436,
+        "Syn": 150,
+        "RST": 143
+      },
+      "aggregate_flows_to_victim": 31052,
+      "l7_slow_connections": null,
+      "packets_sent": 71099,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "ntp_reflection_sim",
+      "flows": 33885,
+      "flagged_flows": 33694,
+      "ml_scored_flows": 1474,
+      "ml_sample_every": 23,
+      "flagged_rate": 0.9944,
+      "layer_hits": {
+        "L1": 33685,
+        "L2": 1474,
+        "OOD": 1352
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "udp_reflection_amplification",
+      "l3_attack_type": "UDP reflection-amplification (NTP)",
+      "l3_family": "udp_reflection_amplification",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 1.17,
+      "mttd_with_idle_export_s": 61.17,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 32411,
+        "UDP": 979,
+        "DNS": 291,
+        "NTP": 204
+      },
+      "aggregate_flows_to_victim": 33884,
+      "l7_slow_connections": null,
+      "packets_sent": 47996,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "syn_flood",
+      "flows": 34843,
+      "flagged_flows": 34604,
+      "ml_scored_flows": 1452,
+      "ml_sample_every": 24,
+      "flagged_rate": 0.9931,
+      "layer_hits": {
+        "L1": 34593,
+        "L2": 1452,
+        "OOD": 1
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "syn_flood",
+      "l3_attack_type": "TCP SYN flood",
+      "l3_family": "syn_flood",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 0.98,
+      "mttd_with_idle_export_s": 60.98,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 33391,
+        "Syn": 1451,
+        "RST": 1
+      },
+      "aggregate_flows_to_victim": 34842,
+      "l7_slow_connections": null,
+      "packets_sent": 89286,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "udp_flood",
+      "flows": 86242,
+      "flagged_flows": 85242,
+      "ml_scored_flows": 1487,
+      "ml_sample_every": 58,
+      "flagged_rate": 0.9884,
+      "layer_hits": {
+        "L1": 85224,
+        "L2": 1487,
+        "OOD": 1479
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "udp_reflection_amplification",
+      "l3_attack_type": "UDP flood",
+      "l3_family": "udp_reflection_amplification",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 0.91,
+      "mttd_with_idle_export_s": 60.91,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 84755,
+        "UDP": 1443,
+        "NTP": 25,
+        "DNS": 19
+      },
+      "aggregate_flows_to_victim": 86222,
+      "l7_slow_connections": null,
+      "packets_sent": 89295,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run2"
+    },
+    {
+      "scenario": "icmp_flood",
+      "flows": 20,
+      "flagged_flows": 20,
+      "ml_scored_flows": 20,
+      "ml_sample_every": 1,
+      "flagged_rate": 1.0,
+      "layer_hits": {
+        "L1": 20,
+        "L2": 20,
+        "OOD": 0
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "ICMP flood",
+      "l3_family": "other",
+      "family_match": true,
+      "expected_layers": [
+        "L1",
+        "L3"
+      ],
+      "missing_layers": [],
+      "mttd_s": 55.81,
+      "mttd_with_idle_export_s": 115.81,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "ICMP": 20
+      },
+      "aggregate_flows_to_victim": 20,
+      "l7_slow_connections": null,
+      "packets_sent": 85268,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run3"
+    },
+    {
+      "scenario": "tcp_ack_flood",
+      "flows": 31278,
+      "flagged_flows": 30803,
+      "ml_scored_flows": 1490,
+      "ml_sample_every": 21,
+      "flagged_rate": 0.9848,
+      "layer_hits": {
+        "L1": 30779,
+        "L2": 1490,
+        "OOD": 1066
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "TCP ACK flood",
+      "l3_family": "other",
+      "family_match": true,
+      "expected_layers": [
+        "L1"
+      ],
+      "missing_layers": [],
+      "mttd_s": 1.23,
+      "mttd_with_idle_export_s": 61.23,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 29788,
+        "ACK": 1490
+      },
+      "aggregate_flows_to_victim": 31278,
+      "l7_slow_connections": null,
+      "packets_sent": 89313,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run3"
+    },
+    {
+      "scenario": "tcp_rst_flood",
+      "flows": 59263,
+      "flagged_flows": 58289,
+      "ml_scored_flows": 1482,
+      "ml_sample_every": 40,
+      "flagged_rate": 0.9836,
+      "layer_hits": {
+        "L1": 58264,
+        "L2": 1482,
+        "OOD": 1
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "TCP RST flood",
+      "l3_family": "other",
+      "family_match": true,
+      "expected_layers": [
+        "L1"
+      ],
+      "missing_layers": [],
+      "mttd_s": 1.47,
+      "mttd_with_idle_export_s": 61.47,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "unscored": 57781,
+        "RST": 1482
+      },
+      "aggregate_flows_to_victim": 59263,
+      "l7_slow_connections": null,
+      "packets_sent": 89452,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run3"
+    },
+    {
+      "scenario": "land_attack",
+      "flows": 1,
+      "flagged_flows": 1,
+      "ml_scored_flows": 1,
+      "ml_sample_every": 1,
+      "flagged_rate": 1.0,
+      "layer_hits": {
+        "L1": 1,
+        "L2": 1,
+        "OOD": 1
+      },
+      "observed_layers": [
+        "L1",
+        "L2",
+        "OOD",
+        "L3"
+      ],
+      "expected_incident": true,
+      "observed_incident": true,
+      "expected_family": "other",
+      "l3_attack_type": "LAND attack (source IP equals destination IP)",
+      "l3_family": "other",
+      "family_match": true,
+      "expected_layers": [
+        "L1"
+      ],
+      "missing_layers": [],
+      "mttd_s": 60.78,
+      "mttd_with_idle_export_s": 120.78,
+      "mttd_budget_s": 30,
+      "top_labels": {
+        "LAND": 1
+      },
+      "aggregate_flows_to_victim": 1,
+      "l7_slow_connections": null,
+      "packets_sent": 17999,
+      "stopped_by": "completed",
+      "outcome": "detected",
+      "run": "run3"
+    }
+  ]
+}

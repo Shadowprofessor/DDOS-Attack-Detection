@@ -207,15 +207,22 @@ def real_scorer() -> FlowScorer:  # pragma: no cover - needs model artifacts
 
     from src.features.l7_lowslow import LowSlowDetector
 
-    thr, sig, ens = ThresholdDetector(window_seconds=10.0), SignatureFilter(), get_default_ensemble()
-    lows = LowSlowDetector()
+    ens = get_default_ensemble()
+    st = {}
+
+    def reset():
+        """v5.3.0: fresh L1 state per scenario. Scenarios run a few seconds apart, so a shared 10 s rate window
+        let the previous flood's packets flag the next scenario's first flows (DEV: flash crowd after DNS)."""
+        st.update(thr=ThresholdDetector(window_seconds=10.0), sig=SignatureFilter(), lows=LowSlowDetector())
+
+    reset()
     p = REPO / "models" / "ood_model.joblib"
     ood = OODDetector.load(str(p)) if p.is_file() else OODDetector()
 
     def l1(feats, src, dst, ts):
-        t = thr.record_flow(feats, src_ip=src, dst_ip=dst, timestamp=ts)
-        s = sig.inspect_flow_features(feats, src_ip=src, dst_ip=dst)
-        ls = lows.observe({"src_ip": src, "src_port": feats.get("Source Port"), "dst_ip": dst,  # as /score/flow does
+        t = st["thr"].record_flow(feats, src_ip=src, dst_ip=dst, timestamp=ts)
+        s = st["sig"].inspect_flow_features(feats, src_ip=src, dst_ip=dst)
+        ls = st["lows"].observe({"src_ip": src, "src_port": feats.get("Source Port"), "dst_ip": dst,  # as /score/flow does
                            "dst_port": feats.get("Destination Port") or 80,
                            "duration_sec": float(feats.get("Flow Duration", 0.0)) / 1e6,
                            "fwd_bytes": float(feats.get("Fwd Packets Length Total", 0.0) or 0.0),
@@ -233,6 +240,7 @@ def real_scorer() -> FlowScorer:  # pragma: no cover - needs model artifacts
                 "OOD": bool(o.get("ood_suspected")), "label": label}
 
     score.l1 = l1  # v5.3.0: L1 is re-run on every analysis; only ML/OOD verdicts come from the cache
+    score.reset = reset
     return score
 
 
@@ -321,6 +329,7 @@ def main() -> None:  # pragma: no cover - CLI
         cache_dir.mkdir(parents=True, exist_ok=True)
         for run in manifest.get("runs", []):
             sc = scs[run["scenario"]]
+            scorer.reset()  # each scenario is an independent experiment
             flows = flows_from_pcap(run_dir / run["pcap"])
             cache = cache_dir / f"{run['scenario']}.json"
             cached = json.loads(cache.read_text()) if cache.is_file() else None
