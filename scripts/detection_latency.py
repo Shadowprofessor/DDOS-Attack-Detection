@@ -156,6 +156,8 @@ def _real_stages():  # pragma: no cover - needs model artifacts
     from src.models.ensemble import get_default_ensemble
     from src.models.ood_detector import OODDetector
 
+    from src.eval.lab_analysis import L2_MODE
+
     thr, sig, lows, ens = ThresholdDetector(window_seconds=10.0), SignatureFilter(), LowSlowDetector(), get_default_ensemble()
     p = REPO / "models" / "ood_model.joblib"
     ood = OODDetector.load(str(p)) if p.is_file() else OODDetector()
@@ -164,14 +166,15 @@ def _real_stages():  # pragma: no cover - needs model artifacts
         ft = f["features"]
         thr.record_flow(ft, src_ip=f["src"], dst_ip=f["dst"], timestamp=f["end"])
         sig.inspect_flow_features(ft, src_ip=f["src"], dst_ip=f["dst"])
-        lows.observe({"src_ip": f["src"], "src_port": ft.get("Source Port"), "dst_ip": f["dst"],
-                      "dst_port": ft.get("Destination Port") or 80,
+        lows.observe({"src_ip": f["src"], "src_port": f.get("sport"), "dst_ip": f["dst"],
+                      "dst_port": f.get("dport") or 80,
                       "duration_sec": float(ft.get("Flow Duration", 0.0)) / 1e6,
-                      "fwd_bytes": float(ft.get("Fwd Packets Length Total", 0.0) or 0.0), "header_complete": True},
+                      "fwd_bytes": float(ft.get("Fwd Packets Length Total", 0.0) or 0.0), "header_complete": True,
+                      "bwd_packets": ft.get("Total Backward Packets")},
                      now=f["end"])
 
     def l2(f):
-        ens.score_flow(f["features"], feature_completeness=None)
+        ens.score_flow(f["features"], mode=L2_MODE, feature_completeness=None)
 
     def oodf(f):
         if ood.is_model_backed:

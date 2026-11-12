@@ -88,6 +88,10 @@ class LiveWindow(_Strict):
     pkt_size: Dict[Literal["mean", "p50", "p95", "max"], float] = Field(default_factory=dict)
     top_talkers: List[Talker] = Field(default_factory=list, max_length=10)
     top_dst_ports: List[PortCount] = Field(default_factory=list, max_length=10)
+    top_src_ports: List[PortCount] = Field(default_factory=list, max_length=10)
+    land: int = Field(0, ge=0, le=10**9)
+    tcp_payload: Optional[float] = Field(None, ge=0.0, le=1.0)
+    slow_conns: int = Field(0, ge=0, le=10**7)  # established low-and-slow connections (bridge, all live flows)
 
 
 class WindowsBody(_Strict):

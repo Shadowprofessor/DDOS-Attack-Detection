@@ -51,7 +51,11 @@ test("analyst works an incident: triage, note, playbook, AI analysis, export", a
 
   await page.getByRole("button", { name: "Run analysis" }).click();
   await expect(page.getByText(/AI recommendation — review before acting/)).toBeVisible();
-  await expect(page.getByText("TCP SYN flood", { exact: true })).toBeVisible();
+  await expect(page.locator(".ai").getByText("TCP SYN flood", { exact: true })).toBeVisible();
+  // v5.3.0: the explanation card says which layer decided, and why
+  const why = page.getByRole("heading", { name: "Why it was flagged" }).locator("..");
+  await expect(why).toContainText("L3 rule analyst");
+  await expect(why).toContainText("SYN is 93% of TCP packets");
 
   const [md] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Export Markdown" }).click()]);
   expect(md.suggestedFilename()).toBe(`${incidentId}.md`);

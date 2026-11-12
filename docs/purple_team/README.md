@@ -192,6 +192,56 @@ for a flow-based deployment.
 3. ports read from CICFlowMeter features, which have none.
 The first pass is kept in `data/lab_runs/run2/analysis_v1_results.json` (gitignored).
 
+## v5.3.0: DEV vs HELD-OUT (run4)
+
+**Protocol.**
+- Detection rules, thresholds and the L2 recipe were set on **DEV = runs 2+3** only.
+- **run4** (fresh seed 4004, the same 12 canonical scenarios) was recorded *before* tuning and analysed
+  only after the rules were frozen (commits `ae84496` and `2e0afab`).
+- L2 was retrained on a separate labelled run, **train1** (22 variants at other rates, sources and
+  ports; seed 1001; the OOD probe excluded).
+- DEV and held-out are reported side by side and never averaged:
+  [`dev_vs_heldout.md`](dev_vs_heldout.md), raw [`dev/results.json`](dev/results.json) and
+  [`heldout/results.json`](heldout/results.json).
+
+| | DEV (tuned on) | HELD-OUT run4 |
+|---|---|---|
+| Attacks detected | 10/10 | **10/10** |
+| L3 named the attack (expected family) | 10/10 | **10/10** |
+| Benign / flash crowd | clean / clean | **clean / clean** |
+| L1 false positives (benign, flash crowd) | 0/413, 0/557 | **0/371, 0/322** |
+| L2 attack detection (sampled flows) | 99.95% | **99.95%** |
+| L2 macro-F1 (coarse families) | 0.872 | **0.800** |
+| MTTD floods (first flagged flow after start) | 0.9–1.5 s | **1.2–1.4 s** |
+
+Before v5.3.0 (same DEV runs):
+- 3/6 attacks were fully detected, and L3 did not detect SYN, ACK or RST.
+- L1 false-positived on 41% of flash-crowd flows.
+- L2 caught 0/1,452 SYN flows.
+
+**Held-out findings (as measured; nothing tuned on them):**
+1. **L2 false positives on connection fragments before an attack.** The capture starts 1 s before
+   the generator. It catches 2-packet TCP leftovers that the victim sends at the end of the previous
+   scenario's connections. The retrained L2 labels these "ACK" (flood): 9 flows in the ICMP capture,
+   3 in the low-and-slow capture ([`pre_start_check.json`](pre_start_check.json)).
+   - That made the raw MTTD negative (ICMP −0.87 s, low-and-slow −0.94 s).
+   - Counting only flows after the start: **ICMP 0.15 s, low-and-slow 118.1 s**.
+   - Fix candidate for v5.4.0, using new DEV data: a minimum flow size / handshake context before
+     an "ACK" class verdict.
+2. **L2 per class on held-out:**
+   - Syn, ACK, RST and LAND: about 1.00 F1.
+   - UDP: 0.97 recall.
+   - Slowloris: 0.50 recall. Reflection (NTP+DNS): 0.32. ICMP: 0.27 (only 50 ICMP training flows,
+     because an ICMP flood is a handful of long flows).
+   - Detection did not depend on these: L1 and the L3 rules named every held-out attack.
+3. **The offline low-and-slow MTTD (118 s) is bound by flow completion.** Live, the same attack
+   alerted at 18 s on DEV through the live slow-connection count. It was not measured live on run4.
+4. **Some training scenarios fell short of their target rate:** `train_rst_a` reached 325 of 700
+   pkt/s, and the training flash crowds 21–27 pkt/s (real HTTP connections).
+5. **Caveat:** train1, DEV and run4 all come from the same generator and the same Mininet network.
+   Configurations and seeds differ, but **lab numbers can still be inflated by generator bias**. They
+   are not evidence for real-world traffic.
+
 ### Reproduce
 
 ```bash

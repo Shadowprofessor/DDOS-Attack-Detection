@@ -122,8 +122,15 @@ export function LiveAttackPage() {
       {alert ? (
         <div className={`banner banner-${alert.status === "CRITICAL" ? "critical" : "warn"}`} role="alert">
           <strong>{alert.status === "CRITICAL" ? "Attack in progress" : "Suspicious traffic"}:</strong>{" "}
-          L1 {alert.vector ?? "rate anomaly"} toward <span className="mono">{alert.dst}</span> ({alert.hint}) ·
+          {alert.explanation?.attack_type ?? `L1 ${alert.vector ?? "rate anomaly"}`} toward <span className="mono">{alert.dst}</span> ·
           alert raised {Math.max(0, Math.round(now - alert.opened_at))} s ago · peak {fmtRate(alert.peak_pps, "pps")}
+          {alert.explanation && (
+            <p className="reason">
+              <span className="muted small">Why ({alert.explanation.detected_by}
+                {alert.explanation.mitre.length ? `, ${alert.explanation.mitre.join(", ")}` : ""}):</span>{" "}
+              {alert.explanation.reason}
+            </p>
+          )}
           {alert.rules.length > 0 && <ul className="small">{alert.rules.map((r) => <li key={r}>{r}</li>)}</ul>}
         </div>
       ) : (
@@ -226,7 +233,8 @@ export function LiveAttackPage() {
             {model.episodes.map((e) => (
               <li key={e.id}>
                 <span className="mono small">{new Date(e.opened_at * 1000).toISOString().slice(11, 19)}</span>
-                <span>{e.status}: {e.vector ?? "rate anomaly"} → {e.dst}</span>
+                <span>{e.status}: {e.explanation?.attack_type ?? e.vector ?? "rate anomaly"} → {e.dst}</span>
+                {e.explanation && <span className="reason small">{e.explanation.reason}</span>}
                 <span className="muted small">{e.closed_at ? `cleared after ${Math.round(e.closed_at - e.opened_at)} s` : "active"}</span>
               </li>
             ))}

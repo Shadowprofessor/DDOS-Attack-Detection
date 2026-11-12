@@ -4,6 +4,68 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] — 2026-11-12
+
+### Pre-fixes from v5.2.0
+- **Chat:** the offline fallback never invents a number. Missing data reads "unknown", and an
+  AST + data test fails if a number is invented.
+- **Command check:** sysctl keys, `DDOS_*`/`NEMOTRON_*` settings and script flags in chat answers
+  are checked against real Linux keys and this repo's code. Anything else is marked "unverified —
+  check before running".
+- **`/score/flow` rate corroboration no longer flags benign traffic.**
+  - H6 rate = events / window. It used to divide by the gap between samples, so two benign flows
+    50 ms apart read as 480 pps.
+  - H9 is a per-destination adaptive EWMA baseline. It used to be one fixed ~2 pps baseline.
+  - A "campaign" needs rate evidence, not just ≥ 3 sources.
+  - DEV: benign 88/90 → 0/90, flash crowd 90/90 → 0/90.
+- Models that did not run are "not scored"; they used to get placeholder Benign 0.56/0.66 entries.
+- Lightning is the primary model everywhere in the docs; the live demo standardises on port 8000
+  (`DDOS_API_URL`).
+- **Recorded as measured:** in live2, Lightning called the **UDP** flood "Benign / flash crowd". It
+  named the SYN flood correctly.
+
+### Added
+- **Explanations on every detection:** `detected_by`, `attack_type`, `confidence` (None for
+  threshold rules), MITRE, and a plain-language `reason` with the numbers.
+  - Covers live L1 alerts, L3 analyses (rules or LLM, with the rule verdict alongside the LLM's)
+    and `/score/flow`.
+  - Shown on the Live Attack banner, the incident page ("Why it was flagged") and the
+    Markdown/PDF export.
+- **L3 rules, tuned on DEV runs 2+3:**
+  - half-open SYN flood (handshake completion instead of a single 0.67 vs 0.7 ratio);
+  - ACK, RST and LAND (source IP == destination IP);
+  - DNS / NTP reflection by **source** port;
+  - unclassified multi-protocol flood; carpet-bombing.
+  - They work on offline flows and on live windows: DEV went from 7/12 to 12/12 named.
+- **Handshake-aware low-and-slow:** a connection only counts after the server answered and the
+  client sent bytes. Live slow-connection counts come from all flows; DEV live alert at 18 s.
+- **Flash-crowd guard:**
+  - per-destination adaptive baseline;
+  - benign signals (complete two-way conversations, TCP data) suppress WARNING-level rate
+    verdicts. CRITICAL always alerts.
+- **Lab:** a labelled training catalogue (22 variants, none equal to an evaluation configuration),
+  per-run `--seed` (it was always 1, so runs were near-copies), and `--catalog main|train`.
+- **L2 retrained (XGBoost) on CIC + lab `train1`,** with the recipe and deploy rule fixed in
+  advance. `DDOS_XGB_MODEL` selects the artifact.
+  - CIC leakage-safe macro-F1 0.906 → 0.917 (benign FPR 0.06% → 0.13%).
+  - **Held-out run4:** 0.018 → **0.800**, attack detection 20% → **99.95%**.
+  - Weak classes: ICMP, reflection, Slowloris.
+- `scripts/train_lab_l2.py`, `scripts/coverage_compare.py`, and `docs/purple_team/{dev,heldout}/`.
+
+### Measured: DEV vs HELD-OUT (rules frozen at `2e0afab` before run4 was analysed)
+- DEV 10/10 attacks detected, 2/2 benign clean. **HELD-OUT 10/10 detected, 10/10 expected family,
+  2/2 benign clean.** Flood MTTD 1.2–1.4 s.
+- **Held-out finding:** L2 labels 2-packet TCP connection fragments, sent by the victim just before
+  two scenarios started, as "ACK": 12 flows. Raw MTTD was negative there. Counting only flows
+  after the start: ICMP 0.15 s, low-and-slow 118.1 s. Not tuned away.
+
+### Fixed
+- Flow-level SYN+FIN signature requires ACK == 0. Normal connections matched it.
+- The slow detector got real ports. CICFlowMeter features have none, so 300 connections
+  collapsed into 3.
+- Lab analysis: fresh L1 state per scenario (the previous flood leaked into the next), L1 always
+  recomputed, and the cache fingerprint covers the artifacts in use + the mode.
+
 ## [5.2.0] — 2026-11-12
 
 ### Added

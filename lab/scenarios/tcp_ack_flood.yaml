@@ -1,5 +1,6 @@
 id: tcp_ack_flood
 name: TCP ACK flood
+label: ACK
 attack: true
 mitre: [T1498.001]
 description: Unsolicited TCP ACK segments (no handshake) from lab attacker hosts to the victim's port 443, forcing state-table lookups and RST replies.

@@ -1,0 +1,8 @@
+id: train_ntp_a
+name: TRAIN NTP variant (udp_reflection, 400 pps, 1 sources)
+attack: true
+label: NTP
+mitre: [T1498.002]
+description: Labelled LAB-ONLY training variant for L2 (NTP); differs from the held-out canonical scenario.
+profile: {protocol: udp_reflection, rate_pps: 400, duration_s: 40, sources: 1, source_role: reflector, dst_port: 123, packet_size: 468}
+expected: {incident: true, family: udp_reflection_amplification, layers: [L1, L2, L3], max_mttd_s: 30}

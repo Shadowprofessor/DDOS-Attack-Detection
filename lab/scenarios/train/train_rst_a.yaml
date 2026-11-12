@@ -1,0 +1,8 @@
+id: train_rst_a
+name: TRAIN RST variant (tcp_rst, 700 pps, 20 sources)
+attack: true
+label: RST
+mitre: [T1498.001]
+description: Labelled LAB-ONLY training variant for L2 (RST); differs from the held-out canonical scenario.
+profile: {protocol: tcp_rst, rate_pps: 700, duration_s: 40, sources: 20, source_role: attacker, dst_port: 80, packet_size: 60}
+expected: {incident: true, family: other, layers: [L1], max_mttd_s: 30}

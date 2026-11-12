@@ -26,7 +26,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from lab.library import load_scenarios
+from lab.library import CATALOGS, load_scenarios
 from lab.safety import KillSwitch, SafetyError, load_scope, source_addresses
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -74,9 +74,9 @@ def switch_port_roles(hosts) -> dict:  # pragma: no cover - needs Mininet
 
 
 def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_result=None,
-                  on_start=None) -> list:  # pragma: no cover
+                  on_start=None, catalog: str = "main", seed: int = 1) -> list:  # pragma: no cover
     kill = KillSwitch.from_scope(scope)
-    scs = load_scenarios()
+    scs = load_scenarios(CATALOGS[catalog])
     results = []
     v = hosts["victim"]
     repo = shlex.quote(str(REPO))  # the repo path contains spaces
@@ -93,7 +93,9 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_re
         t0 = time.time()
         if on_start:
             on_start({"scenario": sid, "pcap": pcap.name, "started_at": t0})  # live demo: ground truth now
-        raw = src_host.cmd(f"{env} python3 -m lab.traffic.generator --scenario {shlex.quote(sid)}")
+        sc_seed = seed * 1000 + names.index(sid)  # v5.3.0: a different random stream per run and scenario
+        raw = src_host.cmd(f"{env} python3 -m lab.traffic.generator --scenario {shlex.quote(sid)} "
+                           f"--catalog {shlex.quote(catalog)} --seed {int(sc_seed)}")
         t1 = time.time()
         time.sleep(1.0)
         cap.terminate()
@@ -103,7 +105,7 @@ def run_scenarios(net, hosts, scope, names, out: Path, gap_s: float = 3.0, on_re
             if line.startswith("{"):
                 report = json.loads(line)
                 break
-        results.append({"scenario": sid, "pcap": pcap.name, "started_at": t0, "ended_at": t1,
+        results.append({"scenario": sid, "label": sc.label, "seed": sc_seed, "pcap": pcap.name, "started_at": t0, "ended_at": t1,
                         "generator": report, "stderr_tail": None if report else raw[-500:]})
         print(sid, "->", report, flush=True)
         if on_result:
@@ -171,6 +173,8 @@ def main() -> None:  # pragma: no cover
     ap.add_argument("--containment", action="store_true")
     ap.add_argument("--uplink", default="eth0")
     ap.add_argument("--gap", type=float, default=3.0, help="seconds of quiet between scenarios")
+    ap.add_argument("--catalog", choices=sorted(CATALOGS), default="main", help="main = canonical scenarios; train = labelled L2 training variants")
+    ap.add_argument("--seed", type=int, default=1, help="random seed of this run (use a new one for every run)")
     ap.add_argument("--ovs-poll", action="store_true", help="write OVS port counters to <out>/ovs_ports.jsonl every 2 s")
     args = ap.parse_args()
     if os.geteuid() != 0:
@@ -180,9 +184,10 @@ def main() -> None:  # pragma: no cover
     scope = load_scope()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    names = [] if args.scenarios == "none" else (list(load_scenarios()) if args.scenarios == "all"
+    names = [] if args.scenarios == "none" else (list(load_scenarios(CATALOGS[args.catalog])) if args.scenarios == "all"
                                                  else args.scenarios.split(","))
-    manifest = {"started": time.time(), "scope": [str(n) for n in scope.networks], "switch": args.switch}
+    manifest = {"started": time.time(), "scope": [str(n) for n in scope.networks], "switch": args.switch,
+                "catalog": args.catalog, "seed": args.seed}
     try:
         if args.containment:  # separate net with a NAT path; torn down before any scenario runs
             net, hosts = build_net(scope, args.switch, with_nat=True)
@@ -212,7 +217,7 @@ def main() -> None:  # pragma: no cover
                     poller = OvsPoller(out, roles=manifest["switch_ports"])
                     poller.start()
                 manifest["runs"] = run_scenarios(net, hosts, scope, names, out, gap_s=args.gap,
-                                                 on_result=save, on_start=started)
+                                                 on_result=save, on_start=started, catalog=args.catalog, seed=args.seed)
             finally:
                 if poller:
                     poller.stop()

@@ -125,11 +125,9 @@ class RateThresholdDetector:
 
             # Compute current metrics over window
             count = len(dq)
-            if count == 0:
-                dt = self.window_seconds
-            else:
-                window_span = dq[-1][0] - dq[0][0]
-                dt = max(window_span, 0.05)  # Avoid div by 0 for instantaneous bursts
+            # v5.3.0: rate = events in the window / window length. It used to be divided by the span between
+            # the first and last event (min 0.05 s), so two benign flows 50 ms apart read as hundreds of pps.
+            dt = self.window_seconds  # Avoid div by 0 for instantaneous bursts
 
             pps = count / dt
             total_bytes = sum(item[1] for item in dq)
@@ -189,11 +187,9 @@ class RateThresholdDetector:
             eval_key = f"dst:{dst_ip}" if dst_ip and f"dst:{dst_ip}" in self._ip_windows else (src_ip if src_ip in self._ip_windows else "__global__")
             dq = self._ip_windows[eval_key]
             count = len(dq)
-            if count == 0:
-                dt = self.window_seconds
-            else:
-                window_span = dq[-1][0] - dq[0][0]
-                dt = max(window_span, 0.05)
+            # v5.3.0: rate = events in the window / window length. It used to be divided by the span between
+            # the first and last event (min 0.05 s), so two benign flows 50 ms apart read as hundreds of pps.
+            dt = self.window_seconds
 
             pps = count / dt
             total_bytes = sum(item[1] for item in dq)
@@ -330,4 +326,26 @@ class RateThresholdDetector:
 
 # Public alias matching H6 requirement
 ThresholdDetector = RateThresholdDetector
+
+
+def is_benign_conversation(features: Dict[str, Any]) -> bool:
+    """v5.3.0 benign signal for one flow: a completed TCP conversation in BOTH directions (handshake,
+    client sent data, server answered with data). Floods (half-open SYN, bare ACK/RST, UDP/ICMP) and
+    low-and-slow connections (the server never answers the unfinished request) are never this."""
+    try:
+        return (int(features.get("Protocol", 6) or 6) == 6
+                and float(features.get("SYN Flag Count", 0) or 0) > 0
+                and float(features.get("ACK Flag Count", 0) or 0) > 0
+                and float(features.get("Fwd Packets Length Total", 0) or 0) > 0
+                and float(features.get("Bwd Packets Length Total", 0) or 0) > 0)
+    except (TypeError, ValueError):
+        return False
+
+
+def l1_rate_counts(result: "RateDetectionResult", features: Dict[str, Any]) -> bool:
+    """Does this rate verdict count as an L1 alert for this flow? CRITICAL always does; a WARNING on a
+    benign two-way conversation does not (flash crowds: many real users raise the victim rate)."""
+    if not result.is_violation:
+        return False
+    return result.status == "CRITICAL" or not is_benign_conversation(features)
 

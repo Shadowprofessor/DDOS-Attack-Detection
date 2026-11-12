@@ -52,6 +52,18 @@ class MLVerdict(BaseModel):
     ood_score: Optional[float] = Field(None, ge=0.0, le=1.0)
 
 
+class TcpFlowSummary(BaseModel):
+    """v5.3.0: what happened to the TCP connections toward the victim (from per-flow flags/payload)."""
+
+    model_config = ConfigDict(extra="forbid")
+    tcp_flows: int = Field(0, ge=0)
+    half_open_share: float = Field(0.0, ge=0.0, le=1.0, description="SYN seen, client never sent payload")
+    bare_ack_share: float = Field(0.0, ge=0.0, le=1.0, description="ACK without SYN, no payload")
+    bare_rst_share: float = Field(0.0, ge=0.0, le=1.0, description="RST without SYN/ACK, no payload")
+    completed_share: float = Field(0.0, ge=0.0, le=1.0, description="SYN, server replied, client sent payload")
+    half_open_per_s: float = Field(0.0, ge=0.0)
+
+
 class IncidentAggregate(BaseModel):
     """Aggregated telemetry for one incident window (no raw packets/payloads)."""
 
@@ -78,6 +90,11 @@ class IncidentAggregate(BaseModel):
     dns: Optional[DnsSummary] = None
     ml: Optional[MLVerdict] = None
     alert_history: List[AlertEvent] = Field(default_factory=list, max_length=20)
+    # v5.3.0 evidence for the L3 rules (all optional; older producers stay valid)
+    src_ports: List[SourceShare] = Field(default_factory=list, max_length=10)
+    tcp_flows: Optional[TcpFlowSummary] = None
+    land_share: float = Field(0.0, ge=0.0, le=1.0, description="share of packets/flows with src IP == dst IP")
+    tcp_payload_share: Optional[float] = Field(None, ge=0.0, le=1.0, description="inbound TCP packets carrying payload")
 
     def observed_ips(self) -> set:
         """Every IP that legitimately appears in this incident (sources + destinations)."""
@@ -107,6 +124,7 @@ class IncidentAnalysis(BaseModel):
     recommended_actions: List[RecommendedAction] = Field(default_factory=list, max_length=8)
     next_queries: List[str] = Field(default_factory=list, max_length=8)
     report_summary: str = Field(..., min_length=10, max_length=1500)
+    reason: Optional[str] = Field(None, max_length=800, description="one plain-language sentence: why, with the numbers")
 
     @field_validator("mitre_ids")
     @classmethod
@@ -129,3 +147,18 @@ class AnalysisResult(BaseModel):
     suspicious_telemetry: int = Field(0, description="instruction-like strings found in telemetry")
     cached: bool = False
     latency_ms: Optional[float] = None
+    explanation: Optional["Explanation"] = None
+
+
+class Explanation(BaseModel):
+    """v5.3.0: what detected it, what it is, and WHY (with the evidence numbers). Built by our code."""
+
+    detected_by: str = Field(..., max_length=64)
+    attack_type: str = Field(..., max_length=120)
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+    mitre: List[str] = Field(default_factory=list, max_length=8)
+    reason: str = Field(..., max_length=800)
+    evidence: List[str] = Field(default_factory=list, max_length=12)
+
+
+AnalysisResult.model_rebuild()  # resolves the forward reference to Explanation

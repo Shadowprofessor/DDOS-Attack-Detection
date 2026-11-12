@@ -48,7 +48,10 @@ class _Slot:
     proto: Counter = field(default_factory=Counter)
     flags: Counter = field(default_factory=Counter)
     ports: Counter = field(default_factory=Counter)
+    sports: Counter = field(default_factory=Counter)
     sizes: List[int] = field(default_factory=list)
+    land: int = 0
+    tcp_payload: int = 0
     conns: Set[tuple] = field(default_factory=set)
 
 
@@ -85,7 +88,13 @@ class WindowAggregator:
         s.sizes.append(size)
         if pkt.dst_port:
             s.ports[pkt.dst_port] += 1
+        if pkt.src_port:
+            s.sports[pkt.src_port] += 1
+        if pkt.src_ip == pkt.dst_ip:
+            s.land += 1
         if pkt.protocol == 6:
+            if pkt.payload_len > 0:
+                s.tcp_payload += 1
             f = pkt.tcp_flags
             if f & F_SYN and not f & F_ACK:
                 s.flags["syn"] += 1
@@ -119,6 +128,10 @@ class WindowAggregator:
                          "p50": _pct(sizes, 0.5), "p95": _pct(sizes, 0.95), "max": float(sizes[-1]) if sizes else 0.0},
             "top_talkers": [{"ip": ip, "packets": n} for ip, n in s.src.most_common(self.top_n)],
             "top_dst_ports": [{"port": p, "packets": n} for p, n in s.ports.most_common(self.top_n)],
+            # v5.3.0 evidence for the L3 rules
+            "top_src_ports": [{"port": p, "packets": n} for p, n in s.sports.most_common(self.top_n)],
+            "land": s.land,
+            "tcp_payload": round(s.tcp_payload / tcp, 4) if tcp else None,
         }
 
     def _quiet(self) -> bool:
@@ -220,6 +233,25 @@ class LiveFlows:
                 self._last_export[fl.flow_key] = now
                 out.append(flow_record(fl, final=False))
         return out
+
+    def slow_counts(self, now: float, min_duration_s: float = 10.0, max_bytes_per_s: float = 50.0,
+                    ports=(80, 443)) -> Dict[str, int]:
+        """v5.3.0: established (server answered, client sent bytes) HTTP connections that have been open
+        >= `min_duration_s` while the client sends <= `max_bytes_per_s`: the low-and-slow signal,
+        per victim. Same rule as `LowSlowDetector`, over ALL live flows (not the sampled ones)."""
+        out: Dict[str, int] = defaultdict(int)
+        for fl in self.ex.active_flows():
+            if fl.protocol != 6 or fl.bwd_packet_count <= 0:
+                continue
+            k = fl.flow_key
+            dst, dport = (k[1], k[3]) if (k[0], k[2]) == (fl.fwd_src_ip, fl.fwd_src_port) else (k[0], k[2])
+            if dport not in ports or fl.fin_count or fl.rst_count:
+                continue  # closed connections are not being held open
+            dur = fl.last_active_time - fl.start_time  # active span (as LowSlowDetector's flow duration), not age
+            sent = sum(fl.fwd_payload_lengths)
+            if dur >= min_duration_s and sent > 0 and sent / dur <= max_bytes_per_s:
+                out[dst] += 1
+        return dict(out)
 
     def flush(self) -> List[dict]:
         self._last_export.clear()

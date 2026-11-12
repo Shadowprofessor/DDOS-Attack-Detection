@@ -35,6 +35,14 @@ class LowSlowDetector:
         duration = float(flow.get("duration_sec", 0.0))
         if duration < self.cfg.min_duration_sec:
             return False
+        # v5.3.0 handshake-aware: a Slowloris connection is an *established* connection on which the client
+        # trickles bytes. A half-open SYN flow (no reply, no client bytes) that lingers >= 10 s is not one;
+        # counting those made the v4.6.1 lab SYN flood look like low-and-slow.
+        bwd = flow.get("bwd_packets")
+        if bwd is not None and float(bwd) <= 0:
+            return False  # the server never answered: no handshake
+        if float(flow.get("fwd_bytes", 0.0) or 0.0) <= 0:
+            return False  # the client never sent a byte: not trickling a request
         if flow.get("header_complete") is False:
             return True  # trickled / never-completed headers = classic Slowloris
         fwd_bytes = float(flow.get("fwd_bytes", 0.0))

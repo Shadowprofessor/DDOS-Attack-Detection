@@ -366,8 +366,10 @@ class SignatureFilter:
         ack_cnt = float(features.get("ACK Flag Count", 0.0))
         proto = int(features.get("Protocol", 6))
 
-        # Check simultaneous SYN+FIN in single flow
-        if syn_cnt > 0 and fin_cnt > 0 and syn_cnt == fin_cnt:
+        # Check simultaneous SYN+FIN in single flow. A flow summary cannot see two flags on ONE packet, and a
+        # normal connection has SYN, SYN-ACK and two FINs; a SYN+FIN probe never gets an ACK. v5.3.0: require
+        # ack == 0 (as the SYN+RST check below does): DEV benign/flash-crowd flows matched this before.
+        if syn_cnt > 0 and fin_cnt > 0 and syn_cnt == fin_cnt and ack_cnt == 0:
             return SignatureMatchResult(
                 matched=True,
                 signature_id="SIG-TCP-001",

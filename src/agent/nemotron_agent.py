@@ -3,8 +3,10 @@
 Nemotron AI Threat Analyzer & Agent Orchestration Layer.
 
 Supports dual LLM providers:
-  - NVIDIA NIM API (preferred, direct Nemotron 3 Ultra access)
-  - OpenRouter API (fallback, Nemotron 3 Ultra via OpenRouter)
+  - NVIDIA NIM API (preferred): Nemotron 3.5 Lightning (nvidia/nemotron-3.5-lightning-30b-a3b) by
+    default, override with NEMOTRON_MODEL. Ultra is only the optional severity-5 escalation of the
+    L3 analyst (DDOS_LLM_ESCALATE_ULTRA, src/agent/llm_client.py).
+  - OpenRouter API (fallback, model from OPENROUTER_MODEL)
 
 Uses multi-turn reasoning and structured output to analyze DDoS attack telemetry
 from BOTH the Ryu/SDN controller and the FastAPI scoring service.
@@ -282,12 +284,12 @@ class NemotronAgent:
     Nemotron AI Threat Analyzer & Agent Orchestration Layer.
 
     Supports dual LLM providers:
-      - NVIDIA NIM API (preferred, direct Nemotron 3 Ultra access)
-      - OpenRouter API (fallback, Nemotron 3 Ultra via OpenRouter)
+      - NVIDIA NIM API (preferred; Nemotron 3.5 Lightning by default, NEMOTRON_MODEL overrides)
+      - OpenRouter API (fallback, model from OPENROUTER_MODEL)
 
     Supports dual alert ingestion (Ryu SDN controller & FastAPI scoring API),
     thread-safe alert batching with auto-flush triggers and payload chunking,
-    Nemotron 3 Ultra reasoning with multi-model ensemble context,
+    Nemotron reasoning with multi-model ensemble context,
     and graceful degraded mode fallback.
 
     NOTE ON DEGRADED MODE:
@@ -445,7 +447,7 @@ class NemotronAgent:
 
     def _call_nemotron_api(self, prompt: str) -> Tuple[Optional[dict], str]:
         """
-        Call Nemotron 3 Ultra via the configured provider (NVIDIA NIM or OpenRouter)
+        Call Nemotron via the configured provider (NVIDIA NIM or OpenRouter)
         and parse structured JSON response.
         Returns (parsed_dict, raw_text).
         """

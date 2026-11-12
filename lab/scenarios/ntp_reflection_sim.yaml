@@ -1,5 +1,6 @@
 id: ntp_reflection_sim
 name: NTP-style reflection (simulated reflector inside the lab)
+label: NTP
 attack: true
 mitre: [T1498.002]
 description: A lab-only simulated reflector answers spoofed requests with large UDP/123 responses to the victim. No real NTP servers are involved.

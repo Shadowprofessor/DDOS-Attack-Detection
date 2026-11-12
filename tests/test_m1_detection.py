@@ -127,6 +127,7 @@ def test_score_flow_low_slow_fires_on_concurrent_slow_connections(monkeypatch):
             feats.update({
                 "Flow Duration": 30_000_000.0,        # 30s in microseconds -> "slow"
                 "Fwd Packets Length Total": 200.0,     # starved byte-rate
+                "Total Backward Packets": 3.0,         # the server answered: an established connection
                 "src_ip": f"10.9.9.{i}", "Destination Port": 80,
             })
             resp = client.post("/score/flow", json={"features": feats},
@@ -136,3 +137,16 @@ def test_score_flow_low_slow_fires_on_concurrent_slow_connections(monkeypatch):
         assert last is not None
         assert last["attack_hint"] == "Slowloris/RUDY"
         assert last["concurrent_slow_connections"] >= 20
+
+
+def test_lowslow_ignores_half_open_and_silent_connections():
+    """v5.3.0: half-open SYN flows (no reply) and connections where the client sent nothing are not slow."""
+    det = LowSlowDetector(LowSlowConfig(concurrent_threshold=3))
+    base = {"dst_ip": "10.99.0.10", "dst_port": 443, "duration_sec": 30.0}
+    for i in range(10):
+        assert det.observe({**base, "src_ip": f"10.99.0.{100 + i}", "src_port": i, "fwd_bytes": 0.0, "bwd_packets": 1}, now=100.0) is None
+        assert det.observe({**base, "src_ip": f"10.99.0.{150 + i}", "src_port": i, "fwd_bytes": 120.0, "bwd_packets": 0}, now=100.0) is None
+    hit = None
+    for i in range(3):
+        hit = det.observe({**base, "src_ip": f"10.99.0.{200 + i}", "src_port": i, "fwd_bytes": 120.0, "bwd_packets": 4}, now=100.0)
+    assert hit and hit["concurrent_slow_connections"] == 3

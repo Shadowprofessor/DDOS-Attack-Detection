@@ -1,5 +1,6 @@
 id: udp_flood
 name: UDP flood
+label: UDP
 attack: true
 mitre: [T1498.001]
 description: High-rate UDP datagrams from lab attacker hosts toward a closed victim port.

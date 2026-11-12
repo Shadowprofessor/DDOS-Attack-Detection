@@ -53,7 +53,7 @@ obs_logging.configure_from_env()
 from src.mitigation.manager import get_manager, PendingActionManager
 from src.features.signature_filter import SignatureFilter
 from src.features.threshold_detector import ThresholdDetector
-from src.features.anomaly_detector import AnomalyDetector
+from src.features.anomaly_detector import AnomalyDetector, PerDestinationBaseline
 from src.agent.campaign_correlator import CampaignCorrelator
 from src.agent.blue_team_expert import generate_incident_dossier, generate_campaign_dossier
 
@@ -61,6 +61,7 @@ mgr = get_manager()
 _SIG_FILTER = SignatureFilter()
 _THRESHOLD_DETECTOR = ThresholdDetector(window_seconds=10.0)
 _ANOMALY_DETECTOR = AnomalyDetector()
+_H9_BASELINES = PerDestinationBaseline()  # v5.3.0 adaptive per-destination H9
 _CAMPAIGN_CORRELATOR = CampaignCorrelator(window_seconds=60.0)
 
 _CAMPAIGN_CORRELATION = defaultdict(lambda: {
@@ -390,6 +391,7 @@ def _lowslow_observe(feat: dict, src_ip: str, dst_ip: str) -> Optional[dict]:
                 feat.get("Fwd Packets Length Total", feat.get("Total Length of Fwd Packets", 0.0)) or 0.0
             ),
             "header_complete": feat.get("header_complete", True),
+            "bwd_packets": feat.get("Total Backward Packets"),
         }
         alert = _LOWSLOW.observe(summary)
         if alert:
@@ -490,6 +492,8 @@ class FlowResponse(BaseModel):
     ood: Optional[dict] = None
     # Layer-7 low-and-slow (Slowloris/RUDY) alert for the target, when concurrency crosses threshold.
     low_slow: Optional[dict] = None
+    # v5.3.0: detected_by / attack_type / confidence / MITRE / reason for an attack verdict (None if benign)
+    explanation: Optional[dict] = None
 
 class BatchResponse(BaseModel):
     results: list[ScoringResult]
@@ -809,15 +813,11 @@ async def score_flow(
         h6_result = _THRESHOLD_DETECTOR.record_flow(feat, src_ip=attacker_ip, dst_ip=victim_ip)
 
         # 2. Layer 1/2 Statistical Anomaly Detector (H9)
-        agg_pps = h6_result.current_pps if h6_result.current_pps > 0 else float(feat.get("Flow Packets/s", 0.0))
-        agg_bps = h6_result.current_bps if h6_result.current_bps > 0 else float(feat.get("Flow Bytes/s", 0.0))
-        h9_eval = _ANOMALY_DETECTOR.evaluate_traffic(
-            current_pps=agg_pps,
-            current_bps=agg_bps,
-            proto_counts={"tcp": int(h6_result.current_syn_rate)} if h6_result.current_syn_rate > 0 else None,
-            generate_ai_notes=False,
-        )
-        h9_result = h9_eval.to_dict()
+        # v5.3.0: the victim's own rate from H6 (never one flow's 'Flow Packets/s', ~10^5 for a µs flow), judged
+        # against that destination's adaptive EWMA baseline instead of one fixed global baseline.
+        agg_pps = h6_result.current_pps
+        agg_bps = h6_result.current_bps
+        h9_result = _H9_BASELINES.evaluate(victim_ip, agg_pps, agg_bps)
 
         # 3. Layer 3 Multi-Flow Botnet / Campaign Correlator (H8)
         flow_tot_pkts = int(feat.get("Total Fwd Packets", 0) + feat.get("Total Backward Packets", 0)) or 1
@@ -836,8 +836,13 @@ async def score_flow(
         # 4. Multi-Layer Arbitration: Overriding stateless single-flow limits
         is_h6_critical = (h6_result.status == "CRITICAL")
         is_h9_critical = (h9_result.get("severity") in ("CRITICAL", "HIGH") and h9_result.get("is_anomaly", False))
-        is_campaign_active = (campaign.flow_count >= 3 and (campaign.bot_count >= 3 or campaign.aggregate_pps > 100))
-        is_aggregate_flood = (campaign.flow_count >= 3 and (is_h6_critical or is_h9_critical or is_campaign_active))
+        # v5.3.0: "≥3 sources" alone is not a campaign (a web server's normal clients are ≥3 sources), and
+        # campaign.aggregate_pps sums per-flow 'Flow Packets/s' (~10^5 for a µs-long flow). Corroboration now
+        # needs real rate evidence from H6 (victim packet rate over its window) or H9 (baseline anomaly).
+        # DEV (run2): before, it flagged 88/90 benign and 90/90 flash-crowd sampled flows.
+        rate_evidence = is_h6_critical or is_h9_critical
+        is_campaign_active = (campaign.flow_count >= 3 and campaign.bot_count >= 3 and rate_evidence)
+        is_aggregate_flood = (campaign.flow_count >= 3 and rate_evidence)
 
         consensus_mode = (breakdown or {}).get("mode", model)
         if not is_attack and is_aggregate_flood:
@@ -875,10 +880,9 @@ async def score_flow(
 
             # Explicitly annotate breakdown so operator knows confidence is a joint heuristic, not ML output
             breakdown = dict(breakdown or {})
-            if "random_forest" not in breakdown:
-                breakdown["random_forest"] = {"label": "Benign", "confidence": 0.56}
-            if "xgboost" not in breakdown:
-                breakdown["xgboost"] = {"label": "Benign", "confidence": 0.66}
+            for m in ("random_forest", "xgboost"):  # v5.3.0: no placeholder verdicts for models that did not run
+                if m not in breakdown:
+                    breakdown[m] = {"status": "not scored", "label": None, "confidence": None}
             breakdown.update({
                 "consensus_tier": "MULTI_LAYER_CAMPAIGN_CORROBORATION",
                 "confidence_type": "MULTI_LAYER_CORROBORATION_HEURISTIC",
@@ -1074,11 +1078,17 @@ async def score_flow(
             "degradation_reason": deg_reason,
         })
 
+        from src.agent.explain import explain_score
+
+        basis = "multi_layer" if "MULTI_LAYER" in str((breakdown or {}).get("consensus_tier") or "") else "ml"
+        expl = explain_score(result.is_attack, str(result.attack_family or label), result.confidence, basis,
+                             h6=h6_result.to_dict(), h9=h9_result, dst=victim_ip)
         return FlowResponse(
             result=result,
             model_version="ensemble-rf-xgb-bilstm-v1",
             ood=_ood_assessment(confidence, body.features, label),
             low_slow=_lowslow_observe(feat, attacker_ip, victim_ip),
+            explanation=expl.model_dump() if expl else None,
         )
 
 @app.post("/score/batch", response_model=BatchResponse)

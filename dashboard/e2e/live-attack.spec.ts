@@ -32,6 +32,9 @@ test("live attack view: alert banner, chart, attackers and OVS appear live, then
   await expect(banner).toContainText("10.99.0.10");
   await expect(banner).toContainText("ICMP 99%");
   await expect(banner).toContainText("1416.0 pps");
+  // v5.3.0 explanation: what, detected by which layer, and why with the numbers
+  await expect(banner).toContainText("ICMP flood");
+  await expect(banner).toContainText("L1: 1,416 pps to 10.99.0.10 >= 500 pps critical threshold; ICMP 99% of packets; 20 sources -> 1 victim; T1498.001");
   await expect(page.getByRole("img", { name: /Packets per second.*current 1.4k pkt\/s/ })).toBeVisible();
   await expect(page.getByRole("cell", { name: "10.99.0.100" })).toBeVisible();
 

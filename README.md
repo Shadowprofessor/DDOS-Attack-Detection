@@ -200,19 +200,23 @@ concurrency are capped. A kill switch is checked every tick. The runner refuses 
 detects WSL2 + Mininet. The safety layer, 12 ATT&CK-mapped scenarios (8 in v4.6.0, 4 in v5.1.0) and a mock runner are
 all tested in CI.
 
-**What's measured (Mininet on WSL2; `run2` v4.6.1 + `run3` v5.1.0, 12 scenarios):**
-- **Containment proven in both runs.** Lab egress was dropped by nftables, with nothing on the uplink.
+**What's measured (Mininet on WSL2; DEV `run2`+`run3`, HELD-OUT `run4`, training `train1`):**
+- **Containment proven in every run.** Lab egress was dropped by nftables, with nothing on the uplink.
 - **Measured attack types (10):** SYN, UDP, ICMP, TCP ACK and TCP RST floods; NTP and DNS
   reflection (simulated reflector); HTTP low-and-slow; LAND; a novel/OOD mix.
-  - **Fully detected (4):** UDP flood, NTP reflection, HTTP low-and-slow, ICMP flood.
-  - **Partial (6):** SYN, ACK and RST floods; DNS reflection; LAND; novel mix.
-  - L1 fired on all 10. The rule-based L3 did **not detect** the SYN, ACK and RST floods or the
-    novel mix.
-- **2 false positives** (a flash crowd tripped the L1 rate thresholds).
-- **The ML ensemble missed the lab SYN flood entirely** (0/1,452; also 0/20 ICMP flows). v5.1.0
-  traced this to the training data: lab-shaped flows are 46:1 `Benign` in CIC-DDoS2019. It is a
-  documented limitation, not retrained.
-- Not measured: multi-Gbps floods, real reflectors, slow-read, carpet-bombing.
+- **v5.3.0 held-out run4:** rules were tuned on DEV only and frozen before run4 was analysed.
+  - **10/10 attacks detected, with the expected family named by L3 for all 10.**
+  - **Benign and flash crowd: 0 false positives.**
+  - Flood MTTD 1.2–1.4 s.
+  - See [`docs/purple_team/dev_vs_heldout.md`](docs/purple_team/dev_vs_heldout.md).
+- **L2 retrained on CIC + labelled lab traffic.** On held-out run4 it detects 99.95% of attack flows
+  (macro-F1 0.80; was 0.02). It is still weak on ICMP, reflection and Slowloris classes, and it
+  false-positives on 2-packet TCP fragments. Lab numbers may be inflated by generator bias.
+- **Every alert says why**, with its numbers. For example: *"L1: 1,416 pps to 10.99.0.10 >= 500 pps
+  critical threshold; ICMP 99% of packets; 20 sources -> 1 victim; T1498.001"*.
+- **Before v5.3.0:** 4/10 fully detected, L3 missed SYN/ACK/RST, a flash crowd tripped L1, and L2
+  missed the SYN flood (0/1,452).
+- Not measured: multi-Gbps floods, real reflectors, slow-read, carpet-bombing in the lab.
 
 Coverage matrix, MTTD and findings: [`docs/purple_team/README.md`](docs/purple_team/README.md).
 

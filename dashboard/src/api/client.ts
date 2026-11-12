@@ -133,7 +133,17 @@ export interface RecommendedAction {
   requires_human: boolean;
 }
 
+export interface Explanation {
+  detected_by: string;
+  attack_type: string;
+  confidence: number | null;
+  mitre: string[];
+  reason: string;
+  evidence?: string[];
+}
+
 export interface AnalysisResult {
+  explanation?: Explanation | null;
   analysis: {
     attack_type: string;
     mitre_ids: string[];

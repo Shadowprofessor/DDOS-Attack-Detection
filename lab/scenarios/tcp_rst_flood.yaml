@@ -1,5 +1,6 @@
 id: tcp_rst_flood
 name: TCP RST flood
+label: RST
 attack: true
 mitre: [T1498.001]
 description: High-rate TCP RST segments from lab attacker hosts to the victim's port 443, attempting to disrupt or tear down sessions.

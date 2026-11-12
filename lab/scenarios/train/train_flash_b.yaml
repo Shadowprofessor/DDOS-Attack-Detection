@@ -1,0 +1,7 @@
+id: train_flash_b
+name: TRAIN Benign variant (http, 450 pps, 150 sources)
+attack: false
+label: Benign
+description: Labelled LAB-ONLY training variant for L2 (Benign); differs from the held-out canonical scenario.
+profile: {protocol: http, rate_pps: 450, duration_s: 60, sources: 150, source_role: client, dst_port: 443, packet_size: 700}
+expected: {incident: false}

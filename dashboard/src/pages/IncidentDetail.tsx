@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import {
-  ANALYST_TRANSITIONS, api, ApiError, json, type AnalysisResult, type IncidentDetail, type Playbook,
+  ANALYST_TRANSITIONS, api, ApiError, json, type AnalysisResult, type Explanation, type IncidentDetail, type Playbook,
 } from "../api/client";
 import { isAdmin, useAuth } from "../auth/store";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -19,6 +19,39 @@ function detailText(d: Record<string, unknown>): string {
   return Object.entries(d)
     .map(([k, v]) => `${k}: ${typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)}`)
     .join(" · ");
+}
+
+/** v5.3.0: what detected it, what it is, and why, with the numbers (live L1 alert + analyst). */
+function WhyFlagged({ items }: { items: Explanation[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="card why" aria-labelledby="why-h">
+      <h2 id="why-h">Why it was flagged</h2>
+      <ul className="timeline">
+        {items.map((x, i) => (
+          <li key={i}>
+            <strong>{x.detected_by}</strong>
+            <span>{x.attack_type}</span>
+            <span className="muted small">
+              {x.confidence === null || x.confidence === undefined ? "rule (no probability)" : `confidence ${x.confidence.toFixed(2)}`}
+              {x.mitre.length ? ` · ${x.mitre.join(", ")}` : ""}
+            </span>
+            <span className="reason">{x.reason}</span>
+            {x.evidence?.filter((e) => e.startsWith("Rule analyst on the same data")).map((e) => (
+              <span key={e} className="reason small muted">{e}</span>
+            ))}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function whyItems(inc: IncidentDetail): Explanation[] {
+  const hist = ((inc.aggregate ?? {}) as { alert_history?: { layer?: string; rule?: string; detail?: string }[] }).alert_history ?? [];
+  const out: Explanation[] = hist.map((h) => ({ detected_by: `${h.layer ?? "?"} alert`, attack_type: h.rule ?? "—", confidence: null, mitre: [], reason: h.detail ?? "" }));
+  if (inc.analysis?.explanation) out.push(inc.analysis.explanation);
+  return out;
 }
 
 function AnalysisPanel({ result }: { result: AnalysisResult }) {
@@ -223,6 +256,7 @@ export function IncidentDetailPage() {
         </div>
       </div>
 
+      <WhyFlagged items={whyItems(inc)} />
       <div className="card">
         <div className="row spread">
           <h2>AI analyst</h2>

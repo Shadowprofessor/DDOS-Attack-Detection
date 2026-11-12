@@ -10,6 +10,10 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 SCENARIO_DIR = Path(__file__).resolve().parent / "scenarios"
+# v5.3.0: "main" = the canonical scenarios (DEV runs 2/3 and the held-out run4); "train" = labelled
+# variants at other rates/sources/ports, used only to train L2. Same schema, same safety caps.
+CATALOGS = {"main": SCENARIO_DIR, "train": SCENARIO_DIR / "train"}
+LABELS = ("Benign", "Syn", "UDP", "NTP", "DNS", "ICMP", "ACK", "RST", "LAND", "Slowloris")
 MITRE_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
 
 
@@ -53,6 +57,7 @@ class Scenario(BaseModel):
     id: str = Field(..., pattern=r"^[a-z0-9_]{3,40}$")
     name: str = Field(..., min_length=3, max_length=120)
     attack: bool
+    label: Optional[str] = None  # v5.3.0: ground-truth L2 class (None = not a training class, e.g. the OOD probe)
     mitre: List[str] = Field(default_factory=list)
     description: str = Field(..., min_length=10, max_length=1000)
     profile: Profile
@@ -67,6 +72,10 @@ class Scenario(BaseModel):
             raise ValueError("attack flag and expected.incident disagree")
         if self.attack and not self.mitre:
             raise ValueError("attack scenarios must map to ATT&CK")
+        if self.label is not None and self.label not in LABELS:
+            raise ValueError(f"unknown label {self.label!r}")
+        if self.label is not None and (self.label == "Benign") == self.attack:
+            raise ValueError("label 'Benign' must go with attack: false, and only then")
         return self
 
 
